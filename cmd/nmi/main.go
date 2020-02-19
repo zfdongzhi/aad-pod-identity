@@ -114,7 +114,10 @@ func main() {
 	if err = metrics.RegisterAndExport(*prometheusPort); err != nil {
 		klog.Fatalf("Could not register and export metrics: %+v", err)
 	}
-	if err := s.Run(); err != nil {
+
+	rd := s.GetRedirector()
+
+	if err := s.Run(rd); err != nil {
 		klog.Fatalf("%s", err)
 	}
 }
