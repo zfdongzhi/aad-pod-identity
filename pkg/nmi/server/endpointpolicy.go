@@ -8,6 +8,8 @@ import (
 	"fmt"
 
 	v1 "github.com/Microsoft/hcsshim"
+	msg "github.com/Microsoft/hcnproxy/pkg/types"
+	client "github.com/Microsoft/hcnproxy/pkg/client"
 	"k8s.io/klog"
 )
 
@@ -50,15 +52,15 @@ func DeleteEndpointRoutePolicy(podIP string, metadataIP string) error {
 }
 
 func getEndpointByIP(ip string) (*v1.HNSEndpoint, error) {
-	fmt.Printf("Getting endpoint for IP %s\n", ip)
+	klog.Infof("Getting endpoint for IP %s\n", ip)
 
-	request := HNSRequest{
-		Entity:    EndpointV1,
-		Operation: Enumerate,
+	request := msg.HNSRequest{
+		Entity:    msg.EndpointV1,
+		Operation: msg.Enumerate,
 		Request:   nil,
 	}
 
-	klog.Info("Enumerating all endpoints")
+	klog.Info("Enumerating all endpoints\n")
 	response, e := callHcnProxyAgent(request)
 	if e != nil {
 		return nil, e
@@ -72,7 +74,7 @@ func getEndpointByIP(ip string) (*v1.HNSEndpoint, error) {
 
 	for _, j := range endpoints {
 		if j.IPAddress.String() == ip {
-			klog.Info("Got endpoint for IP with id %s\n", j.Id)
+			klog.Infof("Got endpoint for IP with id %s\n", j.Id)
 			return &j, nil
 		}
 	}
@@ -83,11 +85,11 @@ func getEndpointByIP(ip string) (*v1.HNSEndpoint, error) {
 func addEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string, metadataPort string, nmiIP string, nmiPort string) error {
 
 	if checkProxyPolicyExists(endpoint) == true {
-		klog.Info("Proxy policy exists for endpoint %s. Skipping...\n", endpoint.Id)
+		klog.Infof("Proxy policy exists for endpoint %s. Skipping...\n", endpoint.Id)
 		return nil
 	}
 
-	klog.Info("No proxy policy exists for the endpoint. Trying to apply policy to endpoint %s\n", endpoint.Id)
+	klog.Infof("No proxy policy exists for the endpoint. Trying to apply policy to endpoint %s\n", endpoint.Id)
 	pp := &v1.ProxyPolicy{
 		Type:        v1.Proxy,
 		IP:          metadataIP,
@@ -106,13 +108,13 @@ func addEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string, metadataPort
 		return err
 	}
 
-	request := HNSRequest{
-		Entity:    EndpointV1,
-		Operation: Modify,
+	request := msg.HNSRequest{
+		Entity:    msg.EndpointV1,
+		Operation: msg.Modify,
 		Request:   jsonStr,
 	}
 
-	klog.Info("Adding policy to endpoint %s\n", endpoint.Id)
+	klog.Infof("Adding policy to endpoint %s\n", endpoint.Id)
 	_, er := callHcnProxyAgent(request)
 	return er
 }
@@ -135,13 +137,13 @@ func deleteEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string) error {
 		return e
 	}
 
-	request := HNSRequest{
-		Entity:    EndpointV1,
-		Operation: Modify,
+	request := msg.HNSRequest{
+		Entity:    msg.EndpointV1,
+		Operation: msg.Modify,
 		Request:   jsonStr,
 	}
 
-	klog.Info("Deleting policy from endpoint %s\n", endpoint.Id)
+	klog.Infof("Deleting policy from endpoint %s\n", endpoint.Id)
 	_, er := callHcnProxyAgent(request)
 
 	return er
@@ -159,9 +161,9 @@ func checkProxyPolicyExists(endpoint *v1.HNSEndpoint) bool {
 	return false
 }
 
-func callHcnProxyAgent(req HNSRequest) ([]byte, error) {
+func callHcnProxyAgent(req msg.HNSRequest) ([]byte, error) {
 	klog.Info("Calling HNS Agent")
-	res := InvokeHNSRequest(req)
+	res := client.InvokeHNSRequest(req)
 	if res.Error != nil {
 		return nil, res.Error
 	}

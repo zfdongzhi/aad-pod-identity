@@ -15,6 +15,7 @@ require (
 	github.com/Azure/go-autorest/autorest/to v0.2.0 // indirect
 	github.com/Azure/go-autorest/autorest/validation v0.1.0 // indirect
 	github.com/Microsoft/go-winio v0.4.15-0.20190919025122-fc70bd9a86b5
+	github.com/Microsoft/hcnproxy v1.0.1
 	github.com/Microsoft/hcsshim v0.8.8-0.20200206012256-df3fca3fb4cd
 	github.com/coreos/go-iptables v0.3.0
 	github.com/golang/groupcache v0.0.0-20180513044358-24b0969c4cb7 // indirect
