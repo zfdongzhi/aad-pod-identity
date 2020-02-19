@@ -51,11 +51,11 @@ func (s *WindowsRedirector) Sync() {
 
 			if s.Server.NodeName == pod.Spec.NodeName && s.Server.HostIP != pod.Status.PodIP {
 				if podIP, podExist := podMap[pod.UID]; podExist {
-					klog.Info("Start to delete: Pod UID and Pod Name:%s %s", pod.UID, pod.Name)
+					klog.Infof("Start to delete: Pod UID and Pod Name:%s %s", pod.UID, pod.Name)
 					DeleteEndpointRoutePolicy(podIP, s.Server.MetadataIP)
 					delete(podMap, pod.UID)
 				} else {
-					klog.Info("Start to add: Pod UID and Pod Name:%s %s", pod.UID, pod.Name)
+					klog.Infof("Start to add: Pod UID and Pod Name:%s %s", pod.UID, pod.Name)
 					podMap[pod.UID] = pod.Status.PodIP
 					ApplyEndpointRoutePolicy(pod.Status.PodIP, s.Server.MetadataIP, s.Server.MetadataPort, s.Server.HostIP, s.Server.NMIPort)
 				}
@@ -74,7 +74,7 @@ func (s *WindowsRedirector) ApplyRoutePolicyForExistingPods() {
 
 	for _, podItem := range listPods {
 		if podItem.Spec.NodeName == s.Server.NodeName {
-			klog.Info("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
+			klog.Infof("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
 			ApplyEndpointRoutePolicy(podItem.Status.PodIP, s.Server.MetadataIP, s.Server.MetadataPort, s.Server.HostIP, s.Server.NMIPort)
 		}
 	}
@@ -94,7 +94,7 @@ func (s *WindowsRedirector) DeleteRoutePolicyForExistingPods() {
 
 	for _, podItem := range listPods {
 		if podItem.Spec.NodeName == s.Server.NodeName {
-			klog.Info("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
+			klog.Infof("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
 			DeleteEndpointRoutePolicy(podItem.Status.PodIP, s.Server.MetadataIP)
 		}
 	}

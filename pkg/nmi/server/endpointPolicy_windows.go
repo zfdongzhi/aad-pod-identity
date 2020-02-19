@@ -50,7 +50,7 @@ func DeleteEndpointRoutePolicy(podIP string, metadataIP string) error {
 }
 
 func getEndpointByIP(ip string) (*v1.HNSEndpoint, error) {
-	klog.Info("Getting endpoint for IP %s\n", ip)
+	klog.Infof("Getting endpoint for IP %s\n", ip)
 
 	request := HNSRequest{
 		Entity:    EndpointV1,
@@ -72,7 +72,7 @@ func getEndpointByIP(ip string) (*v1.HNSEndpoint, error) {
 
 	for _, j := range endpoints {
 		if j.IPAddress.String() == ip {
-			klog.Info("Got endpoint for IP with id %s\n", j.Id)
+			klog.Infof("Got endpoint for IP with id %s\n", j.Id)
 			return &j, nil
 		}
 	}
@@ -83,11 +83,11 @@ func getEndpointByIP(ip string) (*v1.HNSEndpoint, error) {
 func addEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string, metadataPort string, nmiIP string, nmiPort string) error {
 
 	if checkProxyPolicyExists(endpoint) == true {
-		klog.Info("Proxy policy exists for endpoint %s. Skipping...\n", endpoint.Id)
+		klog.Infof("Proxy policy exists for endpoint %s. Skipping...\n", endpoint.Id)
 		return nil
 	}
 
-	klog.Info("No proxy policy exists for the endpoint. Trying to apply policy to endpoint %s\n", endpoint.Id)
+	klog.Infof("No proxy policy exists for the endpoint. Trying to apply policy to endpoint %s\n", endpoint.Id)
 	pp := &v1.ProxyPolicy{
 		Type:        v1.Proxy,
 		IP:          metadataIP,
@@ -112,7 +112,7 @@ func addEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string, metadataPort
 		Request:   jsonStr,
 	}
 
-	klog.Info("Adding policy to endpoint %s\n", endpoint.Id)
+	klog.Infof("Adding policy to endpoint %s\n", endpoint.Id)
 	_, er := callHcnProxyAgent(request)
 	return er
 }
@@ -141,7 +141,7 @@ func deleteEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string) error {
 		Request:   jsonStr,
 	}
 
-	klog.Info("Deleting policy from endpoint %s\n", endpoint.Id)
+	klog.Infof("Deleting policy from endpoint %s\n", endpoint.Id)
 	_, er := callHcnProxyAgent(request)
 
 	return er
@@ -167,7 +167,7 @@ func callHcnProxyAgent(req HNSRequest) ([]byte, error) {
 	}
 
 	b, _ := json.Marshal(res)
-	klog.Info("Server response: %s", string(b))
+	klog.Infof("Server response: %s", string(b))
 
 	return res.Response, nil
 }

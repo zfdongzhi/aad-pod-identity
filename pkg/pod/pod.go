@@ -152,7 +152,7 @@ func GetPod(obj interface{}, i informersv1.PodInformer) (pod *v1.Pod, err error)
 		} else {
 			pod, ok := currentPod.(*v1.Pod)
 			if ok && pod.Status.PodIP != "" && pod.Spec.NodeName != "" {
-				klog.Info("Get Pod %s successfully with pod ip: %s and node name: %s\n", pod.Name, pod.Status.PodIP, pod.Spec.NodeName)
+				klog.Infof("Get Pod %s successfully with pod ip: %s and node name: %s\n", pod.Name, pod.Status.PodIP, pod.Spec.NodeName)
 				return pod, nil
 			} else {
 				err := fmt.Errorf("Could not get pod ip or node name: %v", obj.(*v1.Pod))
