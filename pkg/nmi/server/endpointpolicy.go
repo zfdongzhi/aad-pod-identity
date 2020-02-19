@@ -79,7 +79,7 @@ func getEndpointByIP(ip string) (*v1.HNSEndpoint, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("no endpoint found for IP address - %s", ip)
+	return nil, fmt.Errorf("No endpoint found for IP address - %s", ip)
 }
 
 func addEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string, metadataPort string, nmiIP string, nmiPort string) error {
@@ -169,7 +169,7 @@ func callHcnProxyAgent(req msg.HNSRequest) ([]byte, error) {
 	}
 
 	b, _ := json.Marshal(res)
-	fmt.Printf("Server response: %s", string(b))
+	klog.Infof("Server response: %s", string(b))
 
 	return res.Response, nil
 }

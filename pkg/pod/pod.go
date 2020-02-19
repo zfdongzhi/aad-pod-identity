@@ -66,7 +66,6 @@ func addPodHandler(i informersv1.PodInformer, eventCh chan aadpodid.EventType, p
 				if podInfoCh != nil {
 					currentPod := obj.(*v1.Pod)
 
-					fmt.Printf("Pod UID:%s \n", currentPod.UID)
 					podInfoCh <- currentPod
 				}
 			},
@@ -139,28 +138,34 @@ func (c *Client) ListPods() (pods []*v1.Pod, err error) {
 
 // GetPod returns the pod object
 func GetPod(obj interface{}, i informersv1.PodInformer) (pod *v1.Pod, err error) {
-	currentPod, exists, err := i.Informer().GetStore().Get(obj)
-	if !exists || err != nil {
-		err := fmt.Errorf("Could not get Pod %s", obj.(*v1.Pod))
-		klog.Error(err)
-		return nil, err
-	}
 
-	pod = currentPod.(*v1.Pod)
-	for pod.Status.PodIP == "" || pod.Spec.NodeName == "" {
-		fmt.Printf("Sleep 1 second to wait for pod ip and node name\n")
-		time.Sleep(1 * time.Second)
+	tries := 0
+	totalRetries := 300
+
+	for tries < totalRetries {
 		currentPod, exists, err := i.Informer().GetStore().Get(obj)
 		if !exists || err != nil {
-			err := fmt.Errorf("Could not get Pod %s", obj.(*v1.Pod))
+			err := fmt.Errorf("Could not get Pod %v", obj.(*v1.Pod))
 			klog.Error(err)
-			return nil, err
-		}
+			klog.Info("Sleep 1 second to retry get pod.")
+			time.Sleep(time.Second)
+		} else {
+			pod, ok := currentPod.(*v1.Pod)
+			if ok && pod.Status.PodIP != "" && pod.Spec.NodeName != "" {
+				klog.Infof("Get Pod %s successfully with pod ip: %s and node name: %s\n", pod.Name, pod.Status.PodIP, pod.Spec.NodeName)
+				return pod, nil
+			} else {
+				err := fmt.Errorf("Could not get pod ip or node name: %v", obj.(*v1.Pod))
+				klog.Error(err)
 
-		pod = currentPod.(*v1.Pod)
+				klog.Info("Sleep 1 second to wait for pod ip and node name populated\n")
+				time.Sleep(time.Second)
+			}
+		}
 	}
 
-	return pod, nil
+	err = fmt.Errorf("Could not get pod with pod ip and node name: %v", obj.(*v1.Pod))
+	return nil, err
 }
 
 // IsPodExcepted returns true if pod label is part of exception crd
