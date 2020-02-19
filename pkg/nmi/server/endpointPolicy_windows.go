@@ -50,7 +50,7 @@ func DeleteEndpointRoutePolicy(podIP string, metadataIP string) error {
 }
 
 func getEndpointByIP(ip string) (*v1.HNSEndpoint, error) {
-	fmt.Printf("Getting endpoint for IP %s\n", ip)
+	klog.Info("Getting endpoint for IP %s\n", ip)
 
 	request := HNSRequest{
 		Entity:    EndpointV1,
@@ -77,7 +77,7 @@ func getEndpointByIP(ip string) (*v1.HNSEndpoint, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("no endpoint found for IP address - %s", ip)
+	return nil, fmt.Errorf("No endpoint found for IP address - %s", ip)
 }
 
 func addEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string, metadataPort string, nmiIP string, nmiPort string) error {
@@ -167,7 +167,7 @@ func callHcnProxyAgent(req HNSRequest) ([]byte, error) {
 	}
 
 	b, _ := json.Marshal(res)
-	fmt.Printf("Server response: %s", string(b))
+	klog.Info("Server response: %s", string(b))
 
 	return res.Response, nil
 }

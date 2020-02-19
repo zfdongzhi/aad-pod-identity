@@ -3,7 +3,6 @@
 package server
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -50,16 +49,13 @@ func (s *WindowsRedirector) Sync() {
 		case pod = <-s.Server.PodObjChannel:
 			klog.V(6).Infof("Received event: %s", pod)
 
-			fmt.Printf("Node IP and Node Name:%s %s \n", s.Server.HostIP, s.Server.NodeName)
-
-			fmt.Printf("Windows Server Pod UID and Pod Name:%s %s \n", pod.UID, pod.Name)
 			if s.Server.NodeName == pod.Spec.NodeName && s.Server.HostIP != pod.Status.PodIP {
 				if podIP, podExist := podMap[pod.UID]; podExist {
-					fmt.Printf("Delete: Windows Server Pod UID and Pod Name:%s %s \n", pod.UID, pod.Name)
+					klog.Info("Start to delete: Pod UID and Pod Name:%s %s", pod.UID, pod.Name)
 					DeleteEndpointRoutePolicy(podIP, s.Server.MetadataIP)
 					delete(podMap, pod.UID)
 				} else {
-					fmt.Printf("Add: Windows Server Pod UID and Pod Name:%s %s \n", pod.UID, pod.Name)
+					klog.Info("Start to add: Pod UID and Pod Name:%s %s", pod.UID, pod.Name)
 					podMap[pod.UID] = pod.Status.PodIP
 					ApplyEndpointRoutePolicy(pod.Status.PodIP, s.Server.MetadataIP, s.Server.MetadataPort, s.Server.HostIP, s.Server.NMIPort)
 				}
@@ -77,8 +73,8 @@ func (s *WindowsRedirector) ApplyRoutePolicyForExistingPods() {
 	}
 
 	for _, podItem := range listPods {
-		fmt.Printf("Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
 		if podItem.Spec.NodeName == s.Server.NodeName {
+			klog.Info("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
 			ApplyEndpointRoutePolicy(podItem.Status.PodIP, s.Server.MetadataIP, s.Server.MetadataPort, s.Server.HostIP, s.Server.NMIPort)
 		}
 	}
@@ -97,8 +93,8 @@ func (s *WindowsRedirector) DeleteRoutePolicyForExistingPods() {
 	}
 
 	for _, podItem := range listPods {
-		fmt.Printf("Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
 		if podItem.Spec.NodeName == s.Server.NodeName {
+			klog.Info("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
 			DeleteEndpointRoutePolicy(podItem.Status.PodIP, s.Server.MetadataIP)
 		}
 	}
