@@ -23,6 +23,9 @@ func makeRedirectorInt(server *Server) RedirectorInt {
 
 var podMap = make(map[types.UID]string)
 
+// Redirect metadata endpoint call to NMI pod by applying route policy
+// to all the existing pods and watch for new pod creation to apply route
+// policy when the new pod is created.
 func (s *WindowsRedirector) RedirectMetadataEndpoint() {
 	exit := make(chan struct{})
 	s.Server.PodClient.Start(exit)

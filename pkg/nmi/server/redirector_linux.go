@@ -20,6 +20,7 @@ func makeRedirectorInt(server *Server) RedirectorInt {
 	return &LinuxRedirector{Server: server}
 }
 
+// Redirect metadata endpoint call to NMI pod by updating IPTable rules
 func (s *LinuxRedirector) RedirectMetadataEndpoint() {
 	go s.updateIPTableRules()
 }

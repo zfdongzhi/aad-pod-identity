@@ -101,7 +101,7 @@ func NewServer(micNamespace string, blockInstanceMetadata bool) *Server {
 	}
 }
 
-// Run runs the specified Server.
+// Run the specified Server.
 func (s *Server) Run(r RedirectorInt) error {
 	r.RedirectMetadataEndpoint()
 
