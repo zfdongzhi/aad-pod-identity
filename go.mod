@@ -1,5 +1,7 @@
 module github.com/Azure/aad-pod-identity
 
+// replace github.com/Azure/go-autorest v10.8.1+incompatible => github.com/Azure/go-autorest v0.3.0
+
 go 1.12
 
 require (
