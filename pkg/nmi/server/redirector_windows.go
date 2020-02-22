@@ -76,7 +76,7 @@ func (s *WindowsRedirector) ApplyRoutePolicyForExistingPods() {
 	}
 
 	for _, podItem := range listPods {
-		if podItem.Spec.NodeName == s.Server.NodeName {
+		if podItem.Spec.NodeName == s.Server.NodeName && podItem.Status.PodIP != "" && podItem.Status.PodIP != s.Server.HostIP {
 			klog.Infof("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
 			ApplyEndpointRoutePolicy(podItem.Status.PodIP, s.Server.MetadataIP, s.Server.MetadataPort, s.Server.HostIP, s.Server.NMIPort)
 		}
