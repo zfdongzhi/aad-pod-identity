@@ -36,10 +36,6 @@ const (
 	localhost = "127.0.0.1"
 )
 
-type RedirectorInt interface {
-	RedirectMetadataEndpoint()
-}
-
 // Server encapsulates all of the parameters necessary for starting up
 // the server. These can be set via command line.
 type Server struct {
@@ -61,14 +57,12 @@ type Server struct {
 	Reporter *metrics.Reporter
 }
 
+type RedirectorFunc func(*Server)
+
 // NMIResponse is the response returned to caller
 type NMIResponse struct {
 	Token    msiResponse `json:"token"`
 	ClientID string      `json:"clientid"`
-}
-
-func (s *Server) GetRedirector() RedirectorInt {
-	return makeRedirectorInt(s)
 }
 
 // NewServer will create a new Server with default values.
@@ -101,10 +95,7 @@ func NewServer(micNamespace string, blockInstanceMetadata bool) *Server {
 	}
 }
 
-// Run the specified Server.
-func (s *Server) Run(r RedirectorInt) error {
-	r.RedirectMetadataEndpoint()
-
+func (s *Server) Run() error {
 	mux := http.NewServeMux()
 	mux.Handle("/metadata/identity/oauth2/token", appHandler(s.msiHandler))
 	mux.Handle("/metadata/identity/oauth2/token/", appHandler(s.msiHandler))

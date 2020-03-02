@@ -7,15 +7,15 @@ import (
 	"errors"
 	"fmt"
 
-	v1 "github.com/Microsoft/hcsshim"
-	msg "github.com/Microsoft/hcnproxy/pkg/types"
 	client "github.com/Microsoft/hcnproxy/pkg/client"
+	msg "github.com/Microsoft/hcnproxy/pkg/types"
+	v1 "github.com/Microsoft/hcsshim"
 	"k8s.io/klog"
 )
 
 // ApplyEndpointRoutePolicy applies the route policy against the pod ip endpoint
 func ApplyEndpointRoutePolicy(podIP string, metadataIP string, metadataPort string, nmiIP string, nmiPort string) error {
-	if len(podIP) <= 0 {
+	if podIP == "" {
 		return errors.New("Missing IP Address")
 	}
 
@@ -24,8 +24,8 @@ func ApplyEndpointRoutePolicy(podIP string, metadataIP string, metadataPort stri
 		return err
 	}
 
-	er := addEndpointPolicy(endpoint, metadataIP, metadataPort, nmiIP, nmiPort)
-	if er != nil {
+	err = addEndpointPolicy(endpoint, metadataIP, metadataPort, nmiIP, nmiPort)
+	if err != nil {
 		return err
 	}
 
@@ -34,7 +34,7 @@ func ApplyEndpointRoutePolicy(podIP string, metadataIP string, metadataPort stri
 
 // DeleteEndpointRoutePolicy applies the route policy against the pod ip endpoint
 func DeleteEndpointRoutePolicy(podIP string, metadataIP string) error {
-	if len(podIP) <= 0 {
+	if podIP == "" {
 		return errors.New("Missing IP Address")
 	}
 
@@ -43,8 +43,8 @@ func DeleteEndpointRoutePolicy(podIP string, metadataIP string) error {
 		return err
 	}
 
-	er := deleteEndpointPolicy(endpoint, metadataIP)
-	if er != nil {
+	err = deleteEndpointPolicy(endpoint, metadataIP)
+	if err != nil {
 		return err
 	}
 
@@ -61,21 +61,21 @@ func getEndpointByIP(ip string) (*v1.HNSEndpoint, error) {
 	}
 
 	klog.Info("Enumerating all endpoints\n")
-	response, e := callHcnProxyAgent(request)
-	if e != nil {
-		return nil, e
-	}
-
-	var endpoints []v1.HNSEndpoint
-	err := json.Unmarshal(response, &endpoints)
+	response, err := callHcnProxyAgent(request)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, j := range endpoints {
-		if j.IPAddress.String() == ip {
-			klog.Infof("Got endpoint for IP with id %s\n", j.Id)
-			return &j, nil
+	var endpoints []v1.HNSEndpoint
+	err = json.Unmarshal(response, &endpoints)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ep := range endpoints {
+		if ep.IPAddress.String() == ip {
+			klog.Infof("Got endpoint for IP with id %s\n", ep.Id)
+			return &ep, nil
 		}
 	}
 
@@ -90,21 +90,21 @@ func addEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string, metadataPort
 	}
 
 	klog.Infof("No proxy policy exists for the endpoint. Trying to apply policy to endpoint %s\n", endpoint.Id)
-	pp := &v1.ProxyPolicy{
+	policy := &v1.ProxyPolicy{
 		Type:        v1.Proxy,
 		IP:          metadataIP,
 		Port:        metadataPort,
 		Destination: fmt.Sprintf("%s:%s", nmiIP, nmiPort),
 	}
 
-	jsonStr, err := json.Marshal(pp)
+	jsonStr, err := json.Marshal(policy)
 	if err != nil {
 		return err
 	}
 	endpoint.Policies = append(endpoint.Policies, jsonStr)
 
-	jsonStr, e := json.Marshal(endpoint)
-	if e != nil {
+	jsonStr, err = json.Marshal(endpoint)
+	if err != nil {
 		return err
 	}
 
@@ -115,8 +115,8 @@ func addEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string, metadataPort
 	}
 
 	klog.Infof("Adding policy to endpoint %s\n", endpoint.Id)
-	_, er := callHcnProxyAgent(request)
-	return er
+	_, err = callHcnProxyAgent(request)
+	return err
 }
 
 func deleteEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string) error {
@@ -132,9 +132,9 @@ func deleteEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string) error {
 
 	endpoint.Policies = append(endpoint.Policies[:index], endpoint.Policies[index+1:]...)
 
-	jsonStr, e := json.Marshal(endpoint)
-	if e != nil {
-		return e
+	jsonStr, err := json.Marshal(endpoint)
+	if err != nil {
+		return err
 	}
 
 	request := msg.HNSRequest{
@@ -144,9 +144,9 @@ func deleteEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string) error {
 	}
 
 	klog.Infof("Deleting policy from endpoint %s\n", endpoint.Id)
-	_, er := callHcnProxyAgent(request)
+	_, err = callHcnProxyAgent(request)
 
-	return er
+	return err
 }
 
 func checkProxyPolicyExists(endpoint *v1.HNSEndpoint) bool {

@@ -12,23 +12,22 @@ import (
 	"k8s.io/klog"
 )
 
-type LinuxRedirector struct {
-	Server *Server
+// LinuxRedirector returns sync function for linux redirector
+func LinuxRedirector(server *Server) func(server *Server) {
+	return func(server *Server) {
+		updateIPTableRules(server)
+	}
 }
 
-func makeRedirectorInt(server *Server) RedirectorInt {
-	return &LinuxRedirector{Server: server}
+// WindowsRedirector returns sync function for windows redirector
+func WindowsRedirector(server *Server) func(server *Server) {
+	panic("Windows Redirector is not applicable")
 }
 
-// Redirect metadata endpoint call to NMI pod by updating IPTable rules
-func (s *LinuxRedirector) RedirectMetadataEndpoint() {
-	go s.updateIPTableRules()
-}
+func updateIPTableRulesInternal(server *Server) {
+	klog.V(5).Infof("node(%s) hostip(%s) metadataaddress(%s:%s) nmiport(%s)", server.NodeName, server.HostIP, server.MetadataIP, server.MetadataPort, server.NMIPort)
 
-func (s *LinuxRedirector) updateIPTableRulesInternal() {
-	klog.V(5).Infof("node(%s) hostip(%s) metadataaddress(%s:%s) nmiport(%s)", s.Server.NodeName, s.Server.HostIP, s.Server.MetadataIP, s.Server.MetadataPort, s.Server.NMIPort)
-
-	if err := iptables.AddCustomChain(s.Server.MetadataIP, s.Server.MetadataPort, s.Server.HostIP, s.Server.NMIPort); err != nil {
+	if err := iptables.AddCustomChain(server.MetadataIP, server.MetadataPort, server.HostIP, server.NMIPort); err != nil {
 		klog.Fatalf("%s", err)
 	}
 	if err := iptables.LogCustomChain(); err != nil {
@@ -40,17 +39,17 @@ func (s *LinuxRedirector) updateIPTableRulesInternal() {
 // such that metadata requests are received by nmi assigned port
 // NOT originating from HostIP destined to metadata endpoint are
 // routed to NMI endpoint
-func (s *LinuxRedirector) updateIPTableRules() {
+func updateIPTableRules(server *Server) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGTERM, syscall.SIGINT)
 
-	ticker := time.NewTicker(time.Second * time.Duration(s.Server.IPTableUpdateTimeIntervalInSeconds))
+	ticker := time.NewTicker(time.Second * time.Duration(server.IPTableUpdateTimeIntervalInSeconds))
 	defer ticker.Stop()
 
 	// Run once before the waiting on ticker for the rules to take effect
 	// immediately.
-	s.updateIPTableRulesInternal()
-	s.Server.Initialized = true
+	updateIPTableRulesInternal(server)
+	server.Initialized = true
 
 loop:
 	for {
@@ -60,7 +59,7 @@ loop:
 			break loop
 
 		case <-ticker.C:
-			s.updateIPTableRulesInternal()
+			updateIPTableRulesInternal(server)
 		}
 	}
 }

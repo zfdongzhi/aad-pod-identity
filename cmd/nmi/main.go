@@ -2,15 +2,16 @@ package main
 
 import (
 	goflag "flag"
+	"net/http"
 	"os"
+	"runtime"
 	"strings"
 
-	"net/http"
-	_ "net/http/pprof"
+	// _ "net/http/pprof"
 
 	"github.com/Azure/aad-pod-identity/pkg/metrics"
 	"github.com/Azure/aad-pod-identity/pkg/nmi"
-	server "github.com/Azure/aad-pod-identity/pkg/nmi/server"
+	"github.com/Azure/aad-pod-identity/pkg/nmi/server"
 	"github.com/Azure/aad-pod-identity/pkg/probes"
 	"github.com/Azure/aad-pod-identity/version"
 	"github.com/spf13/pflag"
@@ -71,6 +72,11 @@ func main() {
 		klog.Infof("Features for scale clusters enabled")
 	}
 
+	// Register and expose metrics views
+	if err := metrics.RegisterAndExport(*prometheusPort); err != nil {
+		klog.Fatalf("Could not register and export metrics: %+v", err)
+	}
+
 	// normalize operation mode
 	*operationMode = strings.ToLower(*operationMode)
 
@@ -110,14 +116,16 @@ func main() {
 	// will report "Active" once the iptables rules are set
 	probes.InitAndStart(*httpProbePort, &s.Initialized)
 
-	// Register and expose metrics views
-	if err = metrics.RegisterAndExport(*prometheusPort); err != nil {
-		klog.Fatalf("Could not register and export metrics: %+v", err)
+	var redirector server.RedirectorFunc
+	if runtime.GOOS == "windows" {
+		redirector = server.WindowsRedirector(s)
+	} else {
+		redirector = server.LinuxRedirector(s)
 	}
 
-	rd := s.GetRedirector()
+	go redirector(s)
 
-	if err := s.Run(rd); err != nil {
+	if err := s.Run(); err != nil {
 		klog.Fatalf("%s", err)
 	}
 }
