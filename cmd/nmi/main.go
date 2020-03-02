@@ -7,8 +7,6 @@ import (
 	"runtime"
 	"strings"
 
-	// _ "net/http/pprof"
-
 	"github.com/Azure/aad-pod-identity/pkg/metrics"
 	"github.com/Azure/aad-pod-identity/pkg/nmi"
 	"github.com/Azure/aad-pod-identity/pkg/nmi/server"
