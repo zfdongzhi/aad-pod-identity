@@ -55,8 +55,7 @@ func addPodHandler(i informersv1.PodInformer, eventCh chan aadpodid.EventType, p
 				eventCh <- aadpodid.PodCreated
 
 				if podInfoCh != nil {
-					currentPod, _ := GetPod(obj, i)
-					podInfoCh <- currentPod
+					go GetPod(obj, i, podInfoCh)
 				}
 			},
 			DeleteFunc: func(obj interface{}) {
@@ -96,7 +95,7 @@ func (c *Client) syncCache(exit <-chan struct{}) {
 func (c *Client) Start(exit <-chan struct{}) {
 	go c.PodWatcher.Informer().Run(exit)
 	c.syncCache(exit)
-	klog.Info("Pod watcher started !!")
+	klog.Info("Pod watcher started!!")
 }
 
 // GetPods returns list of all pods
@@ -137,7 +136,7 @@ func (c *Client) ListPods() (pods []*v1.Pod, err error) {
 }
 
 // GetPod returns the pod object
-func GetPod(obj interface{}, i informersv1.PodInformer) (pod *v1.Pod, err error) {
+func GetPod(obj interface{}, i informersv1.PodInformer, podInfoCh chan *v1.Pod) {
 
 	tries := 0
 	totalRetries := 300
@@ -147,25 +146,28 @@ func GetPod(obj interface{}, i informersv1.PodInformer) (pod *v1.Pod, err error)
 		if !exists || err != nil {
 			err := fmt.Errorf("Could not get Pod %v", obj.(*v1.Pod))
 			klog.Error(err)
-			klog.Info("Sleep 1 second to retry get pod.")
-			time.Sleep(time.Second)
+			klog.Info("Sleep 5 seconds to retry get pod.")
+			time.Sleep(5 * time.Second)
+			tries++
 		} else {
 			pod, ok := currentPod.(*v1.Pod)
 			if ok && pod.Status.PodIP != "" && pod.Spec.NodeName != "" {
 				klog.Infof("Get Pod %s successfully with pod ip: %s and node name: %s\n", pod.Name, pod.Status.PodIP, pod.Spec.NodeName)
-				return pod, nil
+				podInfoCh <- pod
+				return
 			} else {
-				err := fmt.Errorf("Could not get pod ip or node name: %v", obj.(*v1.Pod))
+				err := fmt.Errorf("Could not get pod ip or node name: %v", currentPod.(*v1.Pod))
 				klog.Error(err)
 
-				klog.Info("Sleep 1 second to wait for pod ip and node name populated\n")
-				time.Sleep(time.Second)
+				klog.Info("Sleep 5 seconds to wait for pod ip and node name populated\n")
+				time.Sleep(5 * time.Second)
 			}
+			tries++
 		}
 	}
 
-	err = fmt.Errorf("Could not get pod with pod ip and node name: %v", obj.(*v1.Pod))
-	return nil, err
+	klog.Error("Timeout: failed to get pod with pod ip and node name: %v", obj.(*v1.Pod))
+	return
 }
 
 // IsPodExcepted returns true if pod label is part of exception crd
