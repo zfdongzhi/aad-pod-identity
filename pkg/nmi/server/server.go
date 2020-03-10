@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"os"
 
 	"regexp"
 	"runtime"
@@ -28,7 +27,6 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 )
 
@@ -57,7 +55,7 @@ type Server struct {
 	Reporter *metrics.Reporter
 }
 
-type RedirectorFunc func(*Server)
+type RedirectorFunc func(*Server, chan bool, chan bool)
 
 // NMIResponse is the response returned to caller
 type NMIResponse struct {
@@ -66,12 +64,7 @@ type NMIResponse struct {
 }
 
 // NewServer will create a new Server with default values.
-func NewServer(micNamespace string, blockInstanceMetadata bool) *Server {
-	config, err := buildConfig()
-	if err != nil {
-		return nil
-	}
-
+func NewServer(micNamespace string, blockInstanceMetadata bool, config *rest.Config) *Server {
 	clientSet := kubernetes.NewForConfigOrDie(config)
 	informer := informers.NewSharedInformerFactory(clientSet, 60*time.Second)
 	eventCh := make(chan aadpodid.EventType, 100)
@@ -450,14 +443,4 @@ func validateResourceParamExists(resource string) bool {
 		return false
 	}
 	return true
-}
-
-// Create the client config. Use kubeconfig if given, otherwise assume in-cluster.
-func buildConfig() (*rest.Config, error) {
-	kubeconfigPath := os.Getenv("KUBECONFIG")
-	if kubeconfigPath != "" {
-		return clientcmd.BuildConfigFromFlags("", kubeconfigPath)
-	}
-
-	return rest.InClusterConfig()
 }

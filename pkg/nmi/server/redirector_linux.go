@@ -13,14 +13,14 @@ import (
 )
 
 // LinuxRedirector returns sync function for linux redirector
-func LinuxRedirector(server *Server) func(server *Server) {
-	return func(server *Server) {
-		updateIPTableRules(server)
+func LinuxRedirector(server *Server, subRoutinedone chan bool, mainRoutineDone chan bool) func(*Server, chan bool, chan bool) {
+	return func(server *Server, subRoutinedone chan bool, mainRoutineDone chan bool) {
+		updateIPTableRules(server, subRoutinedone, mainRoutineDone)
 	}
 }
 
 // WindowsRedirector returns sync function for windows redirector
-func WindowsRedirector(server *Server) func(server *Server) {
+func WindowsRedirector(server *Server, subRoutinedone chan bool, mainRoutineDone chan bool) func(*Server, chan bool, chan bool) {
 	panic("Windows Redirector is not applicable")
 }
 
@@ -39,7 +39,7 @@ func updateIPTableRulesInternal(server *Server) {
 // such that metadata requests are received by nmi assigned port
 // NOT originating from HostIP destined to metadata endpoint are
 // routed to NMI endpoint
-func updateIPTableRules(server *Server) {
+func updateIPTableRules(server *Server, subRoutinedone chan bool, mainRoutineDone chan bool) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGTERM, syscall.SIGINT)
 
@@ -54,9 +54,11 @@ func updateIPTableRules(server *Server) {
 loop:
 	for {
 		select {
+		case <-mainRoutineDone:
 		case <-signalChan:
 			handleTermination()
-			break loop
+			subRoutinedone <- true
+			return
 
 		case <-ticker.C:
 			updateIPTableRulesInternal(server)
@@ -79,5 +81,4 @@ func handleTermination() {
 	time.Sleep(10 * time.Second)
 
 	klog.Infof("Exiting with %v", exitCode)
-	os.Exit(exitCode)
 }

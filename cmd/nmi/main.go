@@ -13,6 +13,8 @@ import (
 	"github.com/Azure/aad-pod-identity/pkg/probes"
 	"github.com/Azure/aad-pod-identity/version"
 	"github.com/spf13/pflag"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 )
 
@@ -46,6 +48,7 @@ var (
 	blockInstanceMetadata              = pflag.Bool("block-instance-metadata", false, "Block instance metadata endpoints")
 	prometheusPort                     = pflag.String("prometheus-port", "9090", "Prometheus port for metrics")
 	operationMode                      = pflag.String("operation-mode", "standard", "NMI operation mode")
+	kubeconfig                         = pflag.String("kubeconfig", "", "Path to the kube config")
 )
 
 func main() {
@@ -83,10 +86,16 @@ func main() {
 		klog.Fatalf("error creating kube client, err: %+v", err)
 	}
 
+	klog.Infof("Build kubeconfig (%s)", kubeconfig)
+	config, err := buildConfig(*kubeconfig)
+	if err != nil {
+		klog.Fatalf("Could not read config properly. Check the k8s config file, %+v", err)
+	}
+
 	exit := make(<-chan struct{})
 	client.Start(exit)
 	*forceNamespaced = *forceNamespaced || "true" == os.Getenv("FORCENAMESPACED")
-	s := server.NewServer(*micNamespace, *blockInstanceMetadata)
+	s := server.NewServer(*micNamespace, *blockInstanceMetadata, config)
 	s.KubeClient = client
 	s.MetadataIP = *metadataIP
 	s.MetadataPort = *metadataPort
@@ -114,16 +123,30 @@ func main() {
 	// will report "Active" once the iptables rules are set
 	probes.InitAndStart(*httpProbePort, &s.Initialized)
 
+	mainRoutineDone := make(chan bool)
+	subRoutinedone := make(chan bool)
+
 	var redirector server.RedirectorFunc
 	if runtime.GOOS == "windows" {
-		redirector = server.WindowsRedirector(s)
+		redirector = server.WindowsRedirector(s, subRoutinedone, mainRoutineDone)
 	} else {
-		redirector = server.LinuxRedirector(s)
+		redirector = server.LinuxRedirector(s, subRoutinedone, mainRoutineDone)
 	}
 
-	go redirector(s)
+	go redirector(s, subRoutinedone, mainRoutineDone)
 
 	if err := s.Run(); err != nil {
 		klog.Fatalf("%s", err)
 	}
+
+	close(mainRoutineDone)
+	<-subRoutinedone
+}
+
+// Create the client config. Use kubeconfig if given, otherwise assume in-cluster.
+func buildConfig(kubeconfigPath string) (*rest.Config, error) {
+	if kubeconfigPath != "" {
+		return clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	}
+	return rest.InClusterConfig()
 }
