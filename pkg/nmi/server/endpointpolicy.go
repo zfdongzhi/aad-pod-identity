@@ -21,12 +21,12 @@ func ApplyEndpointRoutePolicy(podIP string, metadataIP string, metadataPort stri
 
 	endpoint, err := getEndpointByIP(podIP)
 	if err != nil {
-		return err
+		return fmt.Errorf("No endpoint found for Pod IP - %s. Error: %s", podIP, err.Error())
 	}
 
 	err = addEndpointPolicy(endpoint, metadataIP, metadataPort, nmiIP, nmiPort)
 	if err != nil {
-		return err
+		return fmt.Errorf("Could not add policy to endpoint - %s. Error: %s", endpoint.Id, err.Error())
 	}
 
 	return nil
@@ -40,12 +40,12 @@ func DeleteEndpointRoutePolicy(podIP string, metadataIP string) error {
 
 	endpoint, err := getEndpointByIP(podIP)
 	if err != nil {
-		return err
+		return fmt.Errorf("No endpoint found for Pod IP - %s. Error: %s", podIP, err.Error())
 	}
 
 	err = deleteEndpointPolicy(endpoint, metadataIP)
 	if err != nil {
-		return err
+		return fmt.Errorf("Could't delete policy for endpoint - %s. Error: %s", endpoint.Id, err.Error())
 	}
 
 	return nil
