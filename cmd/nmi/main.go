@@ -128,9 +128,9 @@ func main() {
 
 	var redirector server.RedirectorFunc
 	if runtime.GOOS == "windows" {
-		redirector = server.WindowsRedirector(s, subRoutinedone, mainRoutineDone)
+		redirector = server.WindowsRedirector(s)
 	} else {
-		redirector = server.LinuxRedirector(s, subRoutinedone, mainRoutineDone)
+		redirector = server.LinuxRedirector(s)
 	}
 
 	go redirector(s, subRoutinedone, mainRoutineDone)

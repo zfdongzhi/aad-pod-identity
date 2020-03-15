@@ -13,14 +13,14 @@ import (
 )
 
 // LinuxRedirector returns sync function for linux redirector
-func LinuxRedirector(server *Server, subRoutinedone chan bool, mainRoutineDone chan bool) func(*Server, chan bool, chan bool) {
+func LinuxRedirector(server *Server) func(*Server, chan bool, chan bool) {
 	return func(server *Server, subRoutinedone chan bool, mainRoutineDone chan bool) {
 		updateIPTableRules(server, subRoutinedone, mainRoutineDone)
 	}
 }
 
 // WindowsRedirector returns sync function for windows redirector
-func WindowsRedirector(server *Server, subRoutinedone chan bool, mainRoutineDone chan bool) func(*Server, chan bool, chan bool) {
+func WindowsRedirector(server *Server) func(*Server, chan bool, chan bool) {
 	panic("Windows Redirector is not applicable")
 }
 
@@ -51,7 +51,6 @@ func updateIPTableRules(server *Server, subRoutinedone chan bool, mainRoutineDon
 	updateIPTableRulesInternal(server)
 	server.Initialized = true
 
-loop:
 	for {
 		select {
 		case <-mainRoutineDone:

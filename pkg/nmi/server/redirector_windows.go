@@ -16,7 +16,7 @@ import (
 var podMap = make(map[types.UID]string)
 
 // WindowsRedirector returns sync function for windows redirector
-func WindowsRedirector(server *Server, subRoutinedone chan bool, mainRoutineDone chan bool) func(*Server, chan bool, chan bool) {
+func WindowsRedirector(server *Server) func(*Server, chan bool, chan bool) {
 	exit := make(chan struct{})
 	server.PodClient.Start(exit)
 	klog.V(6).Infof("Pod client started")
@@ -29,7 +29,7 @@ func WindowsRedirector(server *Server, subRoutinedone chan bool, mainRoutineDone
 }
 
 // LinuxRedirector returns sync function for linux redirector
-func LinuxRedirector(server *Server, subRoutinedone chan bool, mainRoutineDone chan bool) func(*Server, chan bool, chan bool) {
+func LinuxRedirector(server *Server) func(*Server, chan bool, chan bool) {
 	panic("Linux Redirector is not applicable")
 }
 
