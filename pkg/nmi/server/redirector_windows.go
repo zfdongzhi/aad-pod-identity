@@ -16,24 +16,24 @@ import (
 var podMap = make(map[types.UID]string)
 
 // WindowsRedirector returns sync function for windows redirector
-func WindowsRedirector(server *Server) func(*Server, chan bool, chan bool) {
+func WindowsRedirector(server *Server) func(*Server, chan bool) {
 	exit := make(chan struct{})
 	server.PodClient.Start(exit)
 	klog.V(6).Infof("Pod client started")
 
 	ApplyRoutePolicyForExistingPods(server)
 
-	return func(server *Server, subRoutinedone chan bool, mainRoutineDone chan bool) {
-		Sync(server, subRoutinedone, mainRoutineDone)
+	return func(server *Server, mainRoutineDone chan bool) {
+		Sync(server, mainRoutineDone)
 	}
 }
 
 // LinuxRedirector returns sync function for linux redirector
-func LinuxRedirector(server *Server) func(*Server, chan bool, chan bool) {
+func LinuxRedirector(server *Server) func(*Server, chan bool) {
 	panic("Linux Redirector is not applicable")
 }
 
-func Sync(server *Server, subRoutinedone chan bool, mainRoutineDone chan bool) {
+func Sync(server *Server, mainRoutineDone chan bool) {
 	klog.Info("Sync thread started.")
 
 	signalChan := make(chan os.Signal, 1)
@@ -47,8 +47,7 @@ func Sync(server *Server, subRoutinedone chan bool, mainRoutineDone chan bool) {
 		case <-mainRoutineDone:
 		case <-signalChan:
 			DeleteRoutePolicyForExistingPods(server)
-			subRoutinedone <- true
-			return
+			break
 		case pod = <-server.PodObjChannel:
 			klog.V(6).Infof("Received event: %s", pod)
 
@@ -109,4 +108,5 @@ func DeleteRoutePolicyForExistingPods(server *Server) {
 	time.Sleep(10 * time.Second)
 
 	klog.Infof("Exiting with %v", exitCode)
+	os.Exit(exitCode)
 }
