@@ -124,6 +124,7 @@ func main() {
 	probes.InitAndStart(*httpProbePort, &s.Initialized)
 
 	mainRoutineDone := make(chan bool)
+	subRoutineDone := make(chan bool)
 
 	var redirector server.RedirectorFunc
 	if runtime.GOOS == "windows" {
@@ -132,13 +133,14 @@ func main() {
 		redirector = server.LinuxRedirector(s)
 	}
 
-	go redirector(s, mainRoutineDone)
+	go redirector(s, subRoutineDone, mainRoutineDone)
 
 	if err := s.Run(); err != nil {
-		klog.Fatalf("%s", err)
+		klog.Errorf("%s", err)
 	}
 
 	close(mainRoutineDone)
+	<-subRoutineDone
 }
 
 // Create the client config. Use kubeconfig if given, otherwise assume in-cluster.
