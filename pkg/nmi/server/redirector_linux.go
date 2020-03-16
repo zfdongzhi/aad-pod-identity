@@ -13,14 +13,14 @@ import (
 )
 
 // LinuxRedirector returns sync function for linux redirector
-func LinuxRedirector(server *Server) func(*Server, chan bool, chan bool) {
-	return func(server *Server, subRoutineDone chan bool, mainRoutineDone chan bool) {
+func LinuxRedirector(server *Server) func(*Server, chan<- bool, <-chan bool) {
+	return func(server *Server, subRoutineDone chan<- bool, mainRoutineDone <-chan bool) {
 		updateIPTableRules(server, subRoutineDone, mainRoutineDone)
 	}
 }
 
 // WindowsRedirector returns sync function for windows redirector
-func WindowsRedirector(server *Server) func(*Server, chan bool, chan bool) {
+func WindowsRedirector(server *Server) func(*Server, chan<- bool, <-chan bool) {
 	panic("Windows Redirector is not applicable")
 }
 
@@ -39,7 +39,7 @@ func updateIPTableRulesInternal(server *Server) {
 // such that metadata requests are received by nmi assigned port
 // NOT originating from HostIP destined to metadata endpoint are
 // routed to NMI endpoint
-func updateIPTableRules(server *Server, subRoutineDone chan bool, mainRoutineDone chan bool) {
+func updateIPTableRules(server *Server, subRoutineDone chan<- bool, mainRoutineDone <-chan bool) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGTERM, syscall.SIGINT)
 
@@ -55,10 +55,10 @@ func updateIPTableRules(server *Server, subRoutineDone chan bool, mainRoutineDon
 		select {
 		case <-signalChan:
 			handleTermination()
-			subRoutineDone <- true
+			close(subRoutineDone)
 		case <-mainRoutineDone:
 			handleTermination()
-			subRoutineDone <- true
+			close(subRoutineDone)
 		case <-ticker.C:
 			updateIPTableRulesInternal(server)
 		}

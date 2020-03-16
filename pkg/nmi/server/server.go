@@ -55,7 +55,7 @@ type Server struct {
 	Reporter *metrics.Reporter
 }
 
-type RedirectorFunc func(*Server, chan bool, chan bool)
+type RedirectorFunc func(*Server, chan<- bool, <-chan bool)
 
 // NMIResponse is the response returned to caller
 type NMIResponse struct {
