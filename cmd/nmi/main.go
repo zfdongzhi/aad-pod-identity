@@ -123,14 +123,14 @@ func main() {
 	// will report "Active" once the iptables rules are set
 	probes.InitAndStart(*httpProbePort, &s.Initialized)
 
-	mainRoutineDone := make(chan bool)
-	subRoutineDone := make(chan bool)
+	mainRoutineDone := make(chan struct{})
+	subRoutineDone := make(chan struct{})
 
 	var redirector server.RedirectorFunc
 	if runtime.GOOS == "windows" {
-		redirector = server.WindowsRedirector(s)
+		redirector = server.WindowsRedirector(s, subRoutineDone)
 	} else {
-		redirector = server.LinuxRedirector(s)
+		redirector = server.LinuxRedirector(s, subRoutineDone)
 	}
 
 	go redirector(s, subRoutineDone, mainRoutineDone)

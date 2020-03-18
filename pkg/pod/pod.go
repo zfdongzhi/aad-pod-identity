@@ -53,26 +53,30 @@ func addPodHandler(i informersv1.PodInformer, eventCh chan aadpodid.EventType, p
 			AddFunc: func(obj interface{}) {
 				klog.V(6).Infof("Pod Created")
 				eventCh <- aadpodid.PodCreated
-
-				if podInfoCh != nil {
-					go GetPod(obj, i, podInfoCh)
-				}
 			},
 			DeleteFunc: func(obj interface{}) {
 				klog.V(6).Infof("Pod Deleted")
 				eventCh <- aadpodid.PodDeleted
-
-				if podInfoCh != nil {
-					currentPod := obj.(*v1.Pod)
-
-					podInfoCh <- currentPod
-				}
 			},
 			UpdateFunc: func(OldObj, newObj interface{}) {
-				// We are only interested in updates to pod if the node changes.
+				oldPod := OldObj.(*v1.Pod)
+				newPod := newObj.(*v1.Pod)
+
+				// This is to handle windows nmi by observing ip change
+				if oldPod.Status.PodIP != newPod.Status.PodIP {
+					klog.V(6).Infof("Pod IP Updated")
+					// klog.Infof("Old Pod IP: %s, Current Pod IP: %s", oldPod.Status.PodIP, newPod.Status.PodIP)
+					if newPod.Status.PodIP == "" {
+						podInfoCh <- oldPod
+					} else {
+						podInfoCh <- newPod
+					}
+				}
+
+				// We are interested in updates to pod if the node changes.
 				// Having this check will ensure that mic sync loop does not do extra work
 				// for every pod update.
-				if (OldObj.(*v1.Pod)).Spec.NodeName != (newObj.(*v1.Pod)).Spec.NodeName {
+				if oldPod.Spec.NodeName != newPod.Spec.NodeName {
 					klog.V(6).Infof("Pod Updated")
 					eventCh <- aadpodid.PodUpdated
 				}
@@ -133,41 +137,6 @@ func (c *Client) ListPods() (pods []*v1.Pod, err error) {
 	}
 
 	return resList, nil
-}
-
-// GetPod returns the pod object
-func GetPod(obj interface{}, i informersv1.PodInformer, podInfoCh chan *v1.Pod) {
-
-	tries := 0
-	totalRetries := 300
-
-	for tries < totalRetries {
-		currentPod, exists, err := i.Informer().GetStore().Get(obj)
-		if !exists || err != nil {
-			err := fmt.Errorf("Could not get Pod %v", obj.(*v1.Pod))
-			klog.Error(err)
-			klog.Info("Sleep 5 seconds to retry get pod.")
-			time.Sleep(5 * time.Second)
-			tries++
-		} else {
-			pod, ok := currentPod.(*v1.Pod)
-			if ok && pod.Status.PodIP != "" && pod.Spec.NodeName != "" {
-				klog.Infof("Get Pod %s successfully with pod ip: %s and node name: %s\n", pod.Name, pod.Status.PodIP, pod.Spec.NodeName)
-				podInfoCh <- pod
-				return
-			} else {
-				err := fmt.Errorf("Could not get pod ip or node name: %v", currentPod.(*v1.Pod))
-				klog.Error(err)
-
-				klog.Info("Sleep 5 seconds to wait for pod ip and node name populated\n")
-				time.Sleep(5 * time.Second)
-			}
-			tries++
-		}
-	}
-
-	klog.Error("Timeout: failed to get pod with pod ip and node name: %v", obj.(*v1.Pod))
-	return
 }
 
 // IsPodExcepted returns true if pod label is part of exception crd
