@@ -65,7 +65,7 @@ func addPodHandler(i informersv1.PodInformer, eventCh chan aadpodid.EventType, p
 				// This is to handle windows nmi by observing ip change
 				if oldPod.Status.PodIP != newPod.Status.PodIP {
 					klog.V(6).Infof("Pod IP Updated")
-					// klog.Infof("Old Pod IP: %s, Current Pod IP: %s", oldPod.Status.PodIP, newPod.Status.PodIP)
+					klog.Infof("Old Pod IP: %s, Current Pod IP: %s", oldPod.Status.PodIP, newPod.Status.PodIP)
 					if newPod.Status.PodIP == "" {
 						podInfoCh <- oldPod
 					} else {
