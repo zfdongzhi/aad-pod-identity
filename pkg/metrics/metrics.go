@@ -21,6 +21,8 @@ const (
 	nmiOperationsDurationName              = "nmi_operations_duration_seconds"
 	nmiTokenOperationCountName             = "nmi_token_operation_count"
 	nmiTokenOperationFailureCountName      = "nmi_token_operation_failure_count"
+	nmiHostPolicyApplyCountName            = "nmi_host_policy_apply_count"
+	nmiHostPolicyApplyFailedCountName      = "nmi_host_policy_apply_failed_count"
 	micCycleDurationName                   = "mic_cycle_duration_seconds"
 	micCycleCountName                      = "mic_cycle_count"
 	micNewLeaderElectionCountName          = "mic_new_leader_election_count"
@@ -102,6 +104,18 @@ var (
 	NMITokenOperationFailureCountM = stats.Int64(
 		nmiTokenOperationFailureCountName,
 		"Total number of failed get token calls to nmi",
+		stats.UnitDimensionless)
+
+	// NMIHostPolicyApplyCountM is a measure that tracks the count of host policy update operation.
+	NMIHostPolicyApplyCountM = stats.Int64(
+		nmiHostPolicyApplyCountName,
+		"Total number of policy host update from nmi",
+		stats.UnitDimensionless)
+
+	// NMIHostPolicyApplyFailedCountM is a measure that tracks the count of failure host policy update operation.
+	NMIHostPolicyApplyFailedCountM = stats.Int64(
+		nmiHostPolicyApplyFailedCountName,
+		"Total number of failed host policy update from nmi",
 		stats.UnitDimensionless)
 
 	// MICCycleDurationM is a measure that tracks the duration in seconds for single mic sync cycle.
@@ -213,6 +227,18 @@ func registerViews() error {
 			Description: NMITokenOperationFailureCountM.Description(),
 			Measure:     NMITokenOperationFailureCountM,
 			Aggregation: view.Count(),
+		},
+		&view.View{
+			Description: NMIHostPolicyApplyCountM.Description(),
+			Measure:     NMIHostPolicyApplyCountM,
+			Aggregation: view.Count(),
+			TagKeys:     []tag.Key{workloadPodKey},
+		},
+		&view.View{
+			Description: NMIHostPolicyApplyFailedCountM.Description(),
+			Measure:     NMIHostPolicyApplyFailedCountM,
+			Aggregation: view.Count(),
+			TagKeys:     []tag.Key{workloadPodKey},
 		},
 		&view.View{
 			Description: MICCycleDurationM.Description(),
@@ -332,6 +358,22 @@ func (r *Reporter) ReportOperationAndStatusForWorkload(operationType, resource, 
 		tag.Insert(resourceKey, resource),
 		tag.Insert(workloadNamespaceKey, workloadns),
 		tag.Insert(workloadPodKey, workloadpod),
+	)
+	if err != nil {
+		return err
+	}
+	record(ctx, ms...)
+	return nil
+}
+
+// ReportIPRoutePolicyOperation records policy measurements workload pod.
+func (r *Reporter) ReportIPRoutePolicyOperation(podip string, ms ...stats.Measurement) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	ctx, err := tag.New(
+		r.ctx,
+		tag.Insert(workloadPodKey, podip),
 	)
 	if err != nil {
 		return err

@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Azure/aad-pod-identity/pkg/metrics"
 	v1 "k8s.io/api/core/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
@@ -32,6 +33,7 @@ func LinuxRedirector(server *Server, subRoutineDone <-chan struct{}) func(*Serve
 	panic("Linux Redirector is not applicable")
 }
 
+// Sync methods watches pod creation and applies policy to that
 func Sync(server *Server, subRoutineDone chan<- struct{}, mainRoutineDone <-chan struct{}) {
 	klog.Info("Sync thread started.")
 
@@ -55,12 +57,14 @@ func Sync(server *Server, subRoutineDone chan<- struct{}, mainRoutineDone <-chan
 			if pod.Status.PodIP != "" && server.NodeName == pod.Spec.NodeName && server.HostIP != pod.Status.PodIP {
 				if podIP, podExist := podMap[pod.UID]; podExist {
 					klog.Infof("Start to delete: Pod UID and Pod Name:%s %s", pod.UID, pod.Name)
-					DeleteEndpointRoutePolicy(podIP, server.MetadataIP)
+					err := DeleteEndpointRoutePolicy(podIP, server.MetadataIP)
+					uploadIPRoutePolicyMetrics(err, server, podIP)
 					delete(podMap, pod.UID)
 				} else {
 					klog.Infof("Start to add: Pod UID and Pod Name:%s %s", pod.UID, pod.Name)
 					podMap[pod.UID] = pod.Status.PodIP
-					ApplyEndpointRoutePolicy(pod.Status.PodIP, server.MetadataIP, server.MetadataPort, server.HostIP, server.NMIPort)
+					err := ApplyEndpointRoutePolicy(pod.Status.PodIP, server.MetadataIP, server.MetadataPort, server.HostIP, server.NMIPort)
+					uploadIPRoutePolicyMetrics(err, server, pod.Status.PodIP)
 				}
 			}
 		}
@@ -79,7 +83,8 @@ func ApplyRoutePolicyForExistingPods(server *Server) {
 	for _, podItem := range listPods {
 		if podItem.Spec.NodeName == server.NodeName && podItem.Status.PodIP != "" && podItem.Status.PodIP != server.HostIP {
 			klog.Infof("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
-			ApplyEndpointRoutePolicy(podItem.Status.PodIP, server.MetadataIP, server.MetadataPort, server.HostIP, server.NMIPort)
+			err := ApplyEndpointRoutePolicy(podItem.Status.PodIP, server.MetadataIP, server.MetadataPort, server.HostIP, server.NMIPort)
+			uploadIPRoutePolicyMetrics(err, server, podItem.Status.PodIP)
 		}
 	}
 }
@@ -100,7 +105,8 @@ func DeleteRoutePolicyForExistingPods(server *Server) {
 	for _, podItem := range listPods {
 		if podItem.Spec.NodeName == server.NodeName {
 			klog.Infof("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
-			DeleteEndpointRoutePolicy(podItem.Status.PodIP, server.MetadataIP)
+			err := DeleteEndpointRoutePolicy(podItem.Status.PodIP, server.MetadataIP)
+			uploadIPRoutePolicyMetrics(err, server, podItem.Status.PodIP)
 		}
 	}
 
@@ -110,4 +116,13 @@ func DeleteRoutePolicyForExistingPods(server *Server) {
 
 	klog.Infof("Exiting with %v", exitCode)
 	os.Exit(exitCode)
+}
+
+func uploadIPRoutePolicyMetrics(err error, server *Server, podIP string) {
+	if err != nil {
+		server.Reporter.ReportIPRoutePolicyOperation(
+			podIP, metrics.NMIHostPolicyApplyFailedCountM.M(1))
+	}
+	server.Reporter.ReportIPRoutePolicyOperation(
+		podIP, metrics.NMIHostPolicyApplyCountM.M(1))
 }
