@@ -180,6 +180,7 @@ var (
 	resourceKey          = tag.MustNewKey("resource")
 	workloadNamespaceKey = tag.MustNewKey("workload_ns")
 	workloadPodKey       = tag.MustNewKey("workload_pod")
+	hostNodeKey          = tag.MustNewKey("host_node")
 )
 
 const componentNamespace = "aadpodidentity"
@@ -234,13 +235,13 @@ func registerViews() error {
 			Description: NMIHostPolicyApplyCountM.Description(),
 			Measure:     NMIHostPolicyApplyCountM,
 			Aggregation: view.Count(),
-			TagKeys:     []tag.Key{workloadPodKey},
+			TagKeys:     []tag.Key{workloadPodKey, hostNodeKey},
 		},
 		&view.View{
 			Description: NMIHostPolicyApplyFailedCountM.Description(),
 			Measure:     NMIHostPolicyApplyFailedCountM,
 			Aggregation: view.Count(),
-			TagKeys:     []tag.Key{workloadPodKey},
+			TagKeys:     []tag.Key{workloadPodKey, hostNodeKey},
 		},
 		&view.View{
 			Description: MICCycleDurationM.Description(),
@@ -368,14 +369,15 @@ func (r *Reporter) ReportOperationAndStatusForWorkload(operationType, resource, 
 	return nil
 }
 
-// ReportIPRoutePolicyOperation records policy measurements workload pod.
-func (r *Reporter) ReportIPRoutePolicyOperation(podip string, ms ...stats.Measurement) error {
+// ReportIPRoutePolicyOperation records policy measurements workload pod and node.
+func (r *Reporter) ReportIPRoutePolicyOperation(podip, nodeName string, ms ...stats.Measurement) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	ctx, err := tag.New(
 		r.ctx,
 		tag.Insert(workloadPodKey, podip),
+		tag.Insert(hostNodeKey, nodeName),
 	)
 	if err != nil {
 		return err

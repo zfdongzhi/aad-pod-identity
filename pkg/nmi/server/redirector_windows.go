@@ -121,8 +121,8 @@ func DeleteRoutePolicyForExistingPods(server *Server) {
 func uploadIPRoutePolicyMetrics(err error, server *Server, podIP string) {
 	if err != nil {
 		server.Reporter.ReportIPRoutePolicyOperation(
-			podIP, metrics.NMIHostPolicyApplyFailedCountM.M(1))
+			podIP, server.NodeName, metrics.NMIHostPolicyApplyFailedCountM.M(1))
 	}
 	server.Reporter.ReportIPRoutePolicyOperation(
-		podIP, metrics.NMIHostPolicyApplyCountM.M(1))
+		podIP, server.NodeName, metrics.NMIHostPolicyApplyCountM.M(1))
 }
