@@ -21,12 +21,16 @@ func ApplyEndpointRoutePolicy(podIP string, metadataIP string, metadataPort stri
 
 	endpoint, err := getEndpointByIP(podIP)
 	if err != nil {
-		return fmt.Errorf("No endpoint found for Pod IP - %s. Error: %w", podIP, err)
+		return fmt.Errorf("Calling HCN agent falied for Pod IP - %s. Error: %v", podIP, err)
+	}
+
+	if endpoint == nil {
+		return fmt.Errorf("No endpoint found for Pod IP - %s.", podIP)
 	}
 
 	err = addEndpointPolicy(endpoint, metadataIP, metadataPort, nmiIP, nmiPort)
 	if err != nil {
-		return fmt.Errorf("Could not add policy to endpoint - %s. Error: %w", endpoint.Id, err)
+		return fmt.Errorf("Could not add policy to endpoint - %s. Error: %v", endpoint.Id, err)
 	}
 
 	return nil
@@ -39,13 +43,19 @@ func DeleteEndpointRoutePolicy(podIP string, metadataIP string) error {
 	}
 
 	endpoint, err := getEndpointByIP(podIP)
+
 	if err != nil {
-		return fmt.Errorf("No endpoint found for Pod IP - %s. Error: %w", podIP, err)
+		return fmt.Errorf("Calling HCN agent falied for Pod IP - %s. Error: %v", podIP, err)
+	}
+
+	if endpoint == nil {
+		klog.Warningf("No deleting action: no endpoint found for Pod IP - %s.", podIP)
+		return nil
 	}
 
 	err = deleteEndpointPolicy(endpoint, metadataIP)
 	if err != nil {
-		return fmt.Errorf("Could't delete policy for endpoint - %s. Error: %w", endpoint.Id, err)
+		return fmt.Errorf("Could't delete policy for endpoint - %s. Error: %v", endpoint.Id, err)
 	}
 
 	return nil
@@ -79,11 +89,12 @@ func getEndpointByIP(ip string) (*v1.HNSEndpoint, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("No endpoint found for IP address - %s", ip)
+	klog.Warningf("No endpoint found for Pod IP - %s.", ip)
+	return nil, nil
 }
 
 func addEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string, metadataPort string, nmiIP string, nmiPort string) error {
-    endpoint.Policies = updateEndpointPolicies(endpoint.Policies, metadataIP)
+	endpoint.Policies = updateEndpointPolicies(endpoint.Policies, metadataIP)
 
 	klog.Infof("Trying to apply policy to endpoint %s\n", endpoint.Id)
 	policy := &v1.ProxyPolicy{
@@ -117,7 +128,7 @@ func addEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string, metadataPort
 
 func deleteEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string) error {
 	endpoint.Policies = updateEndpointPolicies(endpoint.Policies, metadataIP)
-	
+
 	jsonStr, err := json.Marshal(endpoint)
 	if err != nil {
 		return err
@@ -148,13 +159,13 @@ func callHcnProxyAgent(req msg.HNSRequest) ([]byte, error) {
 	return res.Response, nil
 }
 
-func updateEndpointPolicies(policies []json.RawMessage, metadataIP string) ([]json.RawMessage) {
+func updateEndpointPolicies(policies []json.RawMessage, metadataIP string) []json.RawMessage {
 	count := -1
 	index := 0
-    var proxyPolicy v1.ProxyPolicy
-	
+	var proxyPolicy v1.ProxyPolicy
+
 	endpointPolicies := policies
-	
+
 	for i, p := range policies {
 		err := json.Unmarshal(p, &proxyPolicy)
 		if err == nil && proxyPolicy.IP == metadataIP {
