@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	client "github.com/Microsoft/hcnproxy/pkg/client"
 	msg "github.com/Microsoft/hcnproxy/pkg/types"
@@ -164,7 +165,33 @@ func deleteEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string) error {
 }
 
 func callHcnProxyAgent(req msg.HNSRequest) ([]byte, error) {
+	retryCount := 1
+	maxRetryCount := 4
+	var sleepFactor time.Duration = 1
+
 	klog.Info("Calling HNS Agent")
+
+	for {
+		response, err := callHcnProxyAgentInternal(req)
+		if err != nil {
+			if retryCount > maxRetryCount {
+				klog.Info("Calling HNS Agent failed after all retries, giving up")
+				return nil, err
+			}
+
+			klog.Infof("Calling HNS Agent failed, will retry in %s, Error: %w", sleepFactor, err)
+			time.Sleep(sleepFactor * time.Second)
+			sleepFactor = sleepFactor * 2
+			retryCount++
+			continue
+		}
+
+		klog.Info("Call to HNS Agent successful")
+		return response, nil
+	}
+}
+
+func callHcnProxyAgentInternal(req msg.HNSRequest) ([]byte, error) {
 	res := client.InvokeHNSRequest(req)
 	if res.Error != nil {
 		return nil, res.Error
