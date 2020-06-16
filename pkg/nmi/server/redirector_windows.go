@@ -59,7 +59,7 @@ func Sync(server *Server, subRoutineDone chan<- struct{}, mainRoutineDone <-chan
 					uploadIPRoutePolicyMetrics(err, server, podIP)
 
 					if err != nil {
-						klog.Errorf("Failed to delete endpoint route policy: %+v", err)
+						klog.Errorf("Failed to delete endpoint route policy: %w", err)
 					} else {
 						delete(podMap, pod.UID)
 					}
@@ -69,7 +69,7 @@ func Sync(server *Server, subRoutineDone chan<- struct{}, mainRoutineDone <-chan
 					uploadIPRoutePolicyMetrics(err, server, pod.Status.PodIP)
 
 					if err != nil {
-						klog.Errorf("Failed to apply endpoint route policy: %+v", err)
+						klog.Errorf("Failed to apply endpoint route policy: %w", err)
 					} else {
 						podMap[pod.UID] = pod.Status.PodIP
 					}
