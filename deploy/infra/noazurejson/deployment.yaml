@@ -75,7 +75,7 @@ spec:
         name: iptableslock
       containers:
       - name: nmi
-        image: "mcr.microsoft.com/k8s/aad-pod-identity/nmi:1.6.0"
+        image: "mcr.microsoft.com/k8s/aad-pod-identity/nmi:1.6.1"
         imagePullPolicy: Always
         args:
           - "--host-ip=$(HOST_IP)"
@@ -111,7 +111,7 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 5
       nodeSelector:
-        beta.kubernetes.io/os: linux
+        kubernetes.io/os: linux
 ---
 apiVersion: v1
 data:
@@ -146,7 +146,7 @@ spec:
     spec:
       containers:
       - name: mic
-        image: "mcr.microsoft.com/k8s/aad-pod-identity/mic:1.6.0"
+        image: "mcr.microsoft.com/k8s/aad-pod-identity/mic:1.6.1"
         imagePullPolicy: Always
         args:
           - "--kubeconfig=/etc/kubernetes/kubeconfig/kubeconfig"
@@ -219,4 +219,4 @@ spec:
         hostPath:
           path: /etc/kubernetes/certs
       nodeSelector:
-        beta.kubernetes.io/os: linux
+        kubernetes.io/os: linux

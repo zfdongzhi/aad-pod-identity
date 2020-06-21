@@ -10,8 +10,8 @@ import (
 	auth "github.com/Azure/aad-pod-identity/pkg/auth"
 	k8s "github.com/Azure/aad-pod-identity/pkg/k8s"
 	utils "github.com/Azure/aad-pod-identity/pkg/utils"
-	"github.com/Azure/go-autorest/autorest/adal"
 
+	"github.com/Azure/go-autorest/autorest/adal"
 	"k8s.io/klog"
 )
 
@@ -95,7 +95,7 @@ func (sc *StandardClient) listPodIDsWithRetry(ctx context.Context, podns, podnam
 		idStateMap, err = sc.KubeClient.ListPodIds(podns, podname)
 		if err == nil {
 			if len(rqClientID) == 0 {
-				// check to ensure backward compatability with assignedIDs that have no state
+				// check to ensure backward compatibility with assignedIDs that have no state
 				// assigned identites created with old version of mic will not contain a state. So first we check to see if an assigned identity with
 				// no state exists that matches req client id.
 				if len(idStateMap[""]) != 0 {
@@ -112,7 +112,7 @@ func (sc *StandardClient) listPodIDsWithRetry(ctx context.Context, podns, podnam
 			} else {
 				// if client id exists in request, we need to ensure the identity with this client
 				// exists and is in Assigned state
-				// check to ensure backward compatability with assignedIDs that have no state
+				// check to ensure backward compatibility with assignedIDs that have no state
 				for _, podID := range idStateMap[""] {
 					if strings.EqualFold(rqClientID, podID.Spec.ClientID) {
 						klog.Warningf("found assignedIDs with no state for pod:%s/%s. AssignedIDs created with old version of mic.", podns, podname)
@@ -166,8 +166,10 @@ func (sc *StandardClient) GetToken(ctx context.Context, rqClientID, rqResource s
 		token, err := auth.GetServicePrincipalTokenFromMSIWithUserAssignedID(clientID, rqResource)
 		return token, err
 	case aadpodid.ServicePrincipal:
-		tenantid := azureID.Spec.TenantID
-		klog.Infof("matched identityType:%v tenantid:%s clientid:%s resource:%s", idType, tenantid, utils.RedactClientID(clientID), rqResource)
+		tenantID := azureID.Spec.TenantID
+		adEndpoint := azureID.Spec.ADEndpoint
+		klog.Infof("matched identityType:%v adendpoint:%s tenantid:%s clientid:%s resource:%s",
+			idType, adEndpoint, tenantID, utils.RedactClientID(clientID), rqResource)
 		secret, err := sc.KubeClient.GetSecret(&azureID.Spec.ClientPassword)
 		if err != nil {
 			return nil, err
@@ -177,7 +179,20 @@ func (sc *StandardClient) GetToken(ctx context.Context, rqClientID, rqResource s
 			clientSecret = string(v)
 			break
 		}
-		token, err := auth.GetServicePrincipalToken(tenantid, clientID, clientSecret, rqResource)
+		token, err := auth.GetServicePrincipalToken(adEndpoint, tenantID, clientID, clientSecret, rqResource)
+		return token, err
+	case aadpodid.ServicePrincipalCertificate:
+		tenantID := azureID.Spec.TenantID
+		adEndpoint := azureID.Spec.ADEndpoint
+		klog.Infof("matched identityType:%v adendpoint:%s tenantid:%s clientid:%s resource:%s",
+			idType, adEndpoint, tenantID, utils.RedactClientID(clientID), rqResource)
+		secret, err := sc.KubeClient.GetSecret(&azureID.Spec.ClientPassword)
+		if err != nil {
+			return nil, err
+		}
+		certificate, password := secret.Data["certificate"], secret.Data["password"]
+		token, err := auth.GetServicePrincipalTokenWithCertificate(adEndpoint, tenantID, clientID,
+			certificate, string(password), rqResource)
 		return token, err
 	default:
 		return nil, fmt.Errorf("unsupported identity type %+v", idType)

@@ -9,6 +9,7 @@ import (
 	auth "github.com/Azure/aad-pod-identity/pkg/auth"
 	k8s "github.com/Azure/aad-pod-identity/pkg/k8s"
 	utils "github.com/Azure/aad-pod-identity/pkg/utils"
+
 	"github.com/Azure/go-autorest/autorest/adal"
 	"k8s.io/klog"
 )
@@ -41,6 +42,10 @@ func (mc *ManagedClient) GetIdentities(ctx context.Context, podns, podname, clie
 	}
 	// get all the azure identities based on azure identity bindings
 	azureIdentities, err := mc.KubeClient.ListPodIdsWithBinding(podns, pod.Labels)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get azure identities %s/%s, err: %+v", podns, podname, err)
+	}
+
 	for _, id := range azureIdentities {
 		// if client id exists in the request, then send the first identity that matched the client id
 		if len(clientID) != 0 && id.Spec.ClientID == clientID {
@@ -71,8 +76,10 @@ func (mc *ManagedClient) GetToken(ctx context.Context, rqClientID, rqResource st
 		token, err := auth.GetServicePrincipalTokenFromMSIWithUserAssignedID(clientID, rqResource)
 		return token, err
 	case aadpodid.ServicePrincipal:
-		tenantid := azureID.Spec.TenantID
-		klog.Infof("matched identityType:%v tenantid:%s clientid:%s resource:%s", idType, tenantid, utils.RedactClientID(clientID), rqResource)
+		tenantID := azureID.Spec.TenantID
+		adEndpoint := azureID.Spec.ADEndpoint
+		klog.Infof("matched identityType:%v adendpoint:%s tenantid:%s clientid:%s resource:%s",
+			idType, adEndpoint, tenantID, utils.RedactClientID(clientID), rqResource)
 		secret, err := mc.KubeClient.GetSecret(&azureID.Spec.ClientPassword)
 		if err != nil {
 			return nil, err
@@ -82,7 +89,20 @@ func (mc *ManagedClient) GetToken(ctx context.Context, rqClientID, rqResource st
 			clientSecret = string(v)
 			break
 		}
-		token, err := auth.GetServicePrincipalToken(tenantid, clientID, clientSecret, rqResource)
+		token, err := auth.GetServicePrincipalToken(adEndpoint, tenantID, clientID, clientSecret, rqResource)
+		return token, err
+	case aadpodid.ServicePrincipalCertificate:
+		tenantID := azureID.Spec.TenantID
+		adEndpoint := azureID.Spec.ADEndpoint
+		klog.Infof("matched identityType:%v adendpoint:%s tenantid:%s clientid:%s resource:%s",
+			idType, adEndpoint, tenantID, utils.RedactClientID(clientID), rqResource)
+		secret, err := mc.KubeClient.GetSecret(&azureID.Spec.ClientPassword)
+		if err != nil {
+			return nil, err
+		}
+		certificate, password := secret.Data["certificate"], secret.Data["password"]
+		token, err := auth.GetServicePrincipalTokenWithCertificate(adEndpoint, tenantID, clientID,
+			certificate, string(password), rqResource)
 		return token, err
 	default:
 		return nil, fmt.Errorf("unsupported identity type %+v", idType)

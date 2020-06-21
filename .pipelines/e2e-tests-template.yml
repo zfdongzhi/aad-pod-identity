@@ -28,9 +28,9 @@ jobs:
           - script: |
               az login \
                 --service-principal \
-                -u=$(AAD_CLIENT_ID) \
-                -p=$(AAD_CLIENT_SECRET) \
-                -t=$(TENANT_ID) > /dev/null
+                -u=$(AZURE_CLIENT_ID) \
+                -p=$(AZURE_CLIENT_SECRET) \
+                -t=$(AZURE_TENANT_ID) > /dev/null
               az account set -s=$(SUBSCRIPTION_ID)
             displayName: "az login"
 
@@ -82,8 +82,8 @@ jobs:
                 --api-model kubernetes.json \
                 --location $(LOCATION) \
                 --subscription-id $(SUBSCRIPTION_ID) \
-                --client-id $(AAD_CLIENT_ID) \
-                --client-secret $(AAD_CLIENT_SECRET)
+                --client-id $(AZURE_CLIENT_ID) \
+                --client-secret $(AZURE_CLIENT_SECRET)
 
               export KUBECONFIG="$(pwd)/_output/${RESOURCE_GROUP}/kubeconfig/kubeconfig.$(LOCATION).json"
               echo "##vso[task.setvariable variable=KUBECONFIG]${KUBECONFIG}"

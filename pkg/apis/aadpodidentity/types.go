@@ -120,8 +120,9 @@ type AzurePodIdentityExceptionList struct {
 type IdentityType int
 
 const (
-	UserAssignedMSI  IdentityType = 0
-	ServicePrincipal IdentityType = 1
+	UserAssignedMSI             IdentityType = 0
+	ServicePrincipal            IdentityType = 1
+	ServicePrincipalCertificate IdentityType = 2
 )
 
 type AzureIdentitySpec struct {
@@ -206,7 +207,7 @@ type AzureAssignedIdentitySpec struct {
 	Replicas *int32 `json:"replicas"`
 }
 
-// AzureAssignedIdentityStatus has the replica status of the resouce.
+// AzureAssignedIdentityStatus has the replica status of the resource.
 type AzureAssignedIdentityStatus struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	Status            string `json:"status"`

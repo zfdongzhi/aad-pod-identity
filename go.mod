@@ -15,6 +15,7 @@ require (
 	github.com/Microsoft/hcnproxy v1.0.1
 	github.com/Microsoft/hcsshim v0.8.8-0.20200206012256-df3fca3fb4cd
 	github.com/coreos/go-iptables v0.3.0
+	github.com/fsnotify/fsnotify v1.4.9
 	github.com/golang/groupcache v0.0.0-20180513044358-24b0969c4cb7 // indirect
 	github.com/google/go-cmp v0.3.0
 	github.com/googleapis/gnostic v0.1.0 // indirect
@@ -28,6 +29,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.4.0
 	go.opencensus.io v0.22.0
+	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58
 	gopkg.in/yaml.v2 v2.2.4
 	k8s.io/api v0.17.2

@@ -22,6 +22,7 @@ import (
 	"github.com/Azure/aad-pod-identity/pkg/metrics"
 	"github.com/Azure/aad-pod-identity/pkg/nmi"
 	"github.com/Azure/aad-pod-identity/pkg/pod"
+
 	"github.com/Azure/go-autorest/autorest/adal"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -71,12 +72,12 @@ type MetadataResponse struct {
 
 // NewServer will create a new Server with default values.
 func NewServer(micNamespace string, blockInstanceMetadata bool, metadataHeaderRequired bool, config *rest.Config) *Server {
-    clientSet := kubernetes.NewForConfigOrDie(config)
-    informer := informers.NewSharedInformerFactory(clientSet, 60*time.Second)
-    podObjCh := make(chan *v1.Pod, 100)
-    podClient := pod.NewPodClientWithPodInfoCh(informer, podObjCh)
+	clientSet := kubernetes.NewForConfigOrDie(config)
+	informer := informers.NewSharedInformerFactory(clientSet, 60*time.Second)
+	podObjCh := make(chan *v1.Pod, 100)
+	podClient := pod.NewPodClientWithPodInfoCh(informer, podObjCh)
 
-    reporter, err := metrics.NewReporter()
+	reporter, err := metrics.NewReporter()
 	if err != nil {
 		klog.Errorf("Error creating new reporter to emit metrics: %v", err)
 	} else {
@@ -89,8 +90,8 @@ func NewServer(micNamespace string, blockInstanceMetadata bool, metadataHeaderRe
 		BlockInstanceMetadata:  blockInstanceMetadata,
 		MetadataHeaderRequired: metadataHeaderRequired,
 		Reporter:               reporter,
-		PodClient:             podClient,
-		PodObjChannel:         podObjCh,
+		PodClient:              podClient,
+		PodObjChannel:          podObjCh,
 	}
 }
 
@@ -106,7 +107,7 @@ func (s *Server) Run() error {
 	mux.Handle("/", appHandler(s.defaultPathHandler))
 
 	klog.Infof("Listening on port %s", s.NMIPort)
-	if err := http.ListenAndServe(":"+s.NMIPort, mux); err != nil {
+	if err := http.ListenAndServe("localhost:"+s.NMIPort, mux); err != nil {
 		klog.Fatalf("Error creating http server: %+v", err)
 	}
 	return nil
@@ -164,12 +165,15 @@ func (fn appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, resource := parseRequestClientIDAndResource(r)
 
 	if appHandlerReporter != nil {
-		appHandlerReporter.ReportOperationAndStatus(
+		err := appHandlerReporter.ReportOperationAndStatus(
 			r.URL.Path,
 			strconv.Itoa(rw.statusCode),
 			ns,
 			resource,
 			metrics.NMIOperationsDurationM.M(metrics.SinceInSeconds(start)))
+		if err != nil {
+			klog.Warningf("Metrics reporter error: %+v", err)
+		}
 	}
 }
 
@@ -198,7 +202,7 @@ func (s *Server) hostHandler(w http.ResponseWriter, r *http.Request) (ns string)
 	podID, err := s.TokenClient.GetIdentities(r.Context(), podns, podname, rqClientID)
 	if err != nil {
 		klog.Error(err)
-		http.Error(w, err.Error(), getErrorResponseStatusCode(podID != nil))
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	token, err := s.TokenClient.GetToken(r.Context(), rqClientID, rqResource, *podID)
@@ -217,7 +221,7 @@ func (s *Server) hostHandler(w http.ResponseWriter, r *http.Request) (ns string)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Write(response)
+	_, _ = w.Write(response)
 	return
 }
 
@@ -286,7 +290,7 @@ func (s *Server) getTokenForExceptedPod(rqClientID, rqResource string) ([]byte, 
 // if the requests contains client id it validates it against the admin
 // configured id.
 func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) {
-    var err error
+	var err error
 	var podns, podname, rqClientID, rqResource string
 	operationType := metrics.PodTokenOperationType
 
@@ -305,7 +309,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 		s.Reporter.ReportOperationAndStatusForWorkload(
 			operationType, rqResource, podns, podname, metrics.NMITokenOperationCountM.M(1))
 	}()
-	
+
 	if s.MetadataHeaderRequired && parseMetadata(r) != "true" {
 		klog.Errorf("metadata header is not specified, req.method=%s reg.path=%s req.remote=%s", r.Method, r.URL.Path, parseRemoteAddr(r.RemoteAddr))
 		metadataNotSpecifiedError(w)
@@ -354,7 +358,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 			http.Error(w, err.Error(), errorCode)
 			return
 		}
-		w.Write(response)
+		_, _ = w.Write(response)
 		return
 	}
 
@@ -362,7 +366,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	podID, err = s.TokenClient.GetIdentities(r.Context(), podns, podname, rqClientID)
 	if err != nil {
 		klog.Errorf("failed to get matching identities for pod: %s/%s, error: %+v", podns, podname, err)
-		http.Error(w, err.Error(), getErrorResponseStatusCode(podID != nil))
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
@@ -381,7 +385,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Write(response)
+	_, _ = w.Write(response)
 	return
 }
 
@@ -403,7 +407,6 @@ func metadataNotSpecifiedError(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusBadRequest)
 	fmt.Fprintln(w, string(response))
-	return
 }
 
 func parseMetadata(r *http.Request) (metadata string) {
@@ -476,7 +479,7 @@ func (s *Server) defaultPathHandler(w http.ResponseWriter, r *http.Request) (ns 
 		klog.Errorf("failed io operation of reading response body for %s, %+v", req.URL.String(), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	w.Write(body)
+	_, _ = w.Write(body)
 	return
 }
 
@@ -493,26 +496,10 @@ func copyHeader(dst, src http.Header) {
 	}
 }
 
-func getErrorResponseStatusCode(identityFound bool) int {
-	// if at least an identity was found in created state then we return 404 which is a retriable error code
-	// in the go-autorest library. If the identity is in CREATED state then the identity is being processed in
-	// this sync cycle and should move to ASSIGNED state soon.
-	if identityFound {
-		return http.StatusNotFound
-	}
-	// if no identity in at least CREATED state was found, then it means the identity creation is not part of the
-	// current ongoing sync cycle. So we return 403 which a non-retriable error code so we give mic enough time to
-	// finish current sync cycle and process identity in the next sync cycle.
-	return http.StatusForbidden
-}
-
 func validateResourceParamExists(resource string) bool {
 	// check if resource exists in the request
 	// if resource doesn't exist in the request, then adal libraries will return the same error
 	// IMDS also returns an error with 400 response code if resource parameter is empty
 	// this is done to emulate same behavior observed while requesting token from IMDS
-	if len(resource) == 0 {
-		return false
-	}
-	return true
+	return len(resource) != 0
 }

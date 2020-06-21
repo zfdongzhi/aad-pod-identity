@@ -38,7 +38,7 @@ operationMode: "standard"
 
 mic:
   image: mic
-  tag: 1.6.0
+  tag: 1.6.1
 
   priorityClassName: ""
 
@@ -58,7 +58,7 @@ mic:
   ## Node labels for pod assignment
   ## aad-pod-identity is currently only supported on linux
   nodeSelector:
-    beta.kubernetes.io/os: linux
+    kubernetes.io/os: linux
 
   tolerations: []
 
@@ -98,9 +98,22 @@ mic:
   # prometheus port for metrics
   prometheusPort: ""
 
+  # cloud configuration used to authenticate with Azure
+  cloudConfig: "/etc/kubernetes/azure.json"
+
+  # The maximum retry of UpdateUserMSI call. MIC updates all the identities in a batch. If a single identity contains an error
+  # or is invalid, then the entire operation fails. Configuring this flag will make MIC retry by removing the erroneous identities
+  # returned in the error
+  # Default value is 2.
+  updateUserMSIMaxRetry: ""
+
+  # The duration to wait before retrying UpdateUserMSI (batch assigning/un-assigning identity from VM/VMSS) in case of errors
+  # Default value is 1s
+  updateUserMSIRetryInterval: ""
+
 nmi:
   image: nmi
-  tag: 1.6.0
+  tag: 1.6.1
 
   priorityClassName: ""
 
@@ -117,7 +130,7 @@ nmi:
   ## Node labels for pod assignment
   ## aad-pod-identity is currently only supported on linux
   nodeSelector:
-    beta.kubernetes.io/os: linux
+    kubernetes.io/os: linux
 
   tolerations: []
 
@@ -163,18 +176,20 @@ rbac:
   # If using only MSI (type: 0) in AzureIdentity, secret get permission can be disabled by setting this to false.
   allowAccessToSecrets: true
 
-azureIdentity:
-  # enabled/disable deployment of azure identity and binding
-  enabled: false
-  name: "azure-identity"
-  # if not defined, then the azure identity will be deployed in the same namespace as the chart
-  namespace: ""
-  # type 0: MSI, type 1: Service Principal
-  type: 0
-  # /subscriptions/subscription-id/resourcegroups/resource-group/providers/Microsoft.ManagedIdentity/userAssignedIdentities/identity-name
-  resourceID: ""
-  clientID: ""
+# Create azure identities and bindings
+azureIdentities: []
+  # - name: "azure-identity"
+  #   # if not defined, then the azure identity will be deployed in the same namespace as the chart
+  #   namespace: ""
+  #   # type 0: MSI, type 1: Service Principal
+  #   type: 0
+  #   # /subscriptions/subscription-id/resourcegroups/resource-group/providers/Microsoft.ManagedIdentity/userAssignedIdentities/identity-name
+  #   resourceID: ""
+  #   clientID: ""
+  #   binding:
+  #     name: "azure-identity-binding"
+  #     # The selector will also need to be included in labels for app deployment
+  #     selector: "demo"
 
-azureIdentityBinding:
-  name: "azure-identity-binding"
-  selector: "demo"
+# If true, install necessary custom resources.
+installCRDs: false

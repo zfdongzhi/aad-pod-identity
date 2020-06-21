@@ -3,16 +3,17 @@ package cloudprovider
 import (
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"path"
 	"regexp"
 	"strings"
 	"time"
 
-	config "github.com/Azure/aad-pod-identity/pkg/config"
+	"github.com/Azure/aad-pod-identity/pkg/config"
+	"github.com/Azure/aad-pod-identity/pkg/retry"
 	"github.com/Azure/aad-pod-identity/pkg/utils"
 	"github.com/Azure/aad-pod-identity/version"
+
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-12-01/compute"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/adal"
@@ -23,131 +24,142 @@ import (
 
 // Client is a cloud provider client
 type Client struct {
-	VMClient   VMClientInt
-	VMSSClient VMSSClientInt
-	ExtClient  compute.VirtualMachineExtensionsClient
-	Config     config.AzureConfig
+	VMClient    VMClientInt
+	VMSSClient  VMSSClientInt
+	RetryClient retry.ClientInt
+	ExtClient   compute.VirtualMachineExtensionsClient
+	Config      config.AzureConfig
+	configFile  string
 }
 
 // ClientInt client interface
 type ClientInt interface {
 	UpdateUserMSI(addUserAssignedMSIIDs, removeUserAssignedMSIIDs []string, name string, isvmss bool) error
 	GetUserMSIs(name string, isvmss bool) ([]string, error)
+	Init() error
 }
 
+const (
+	// Occurs when the cluster service principal / managed identity does not
+	// have the correct role assignment to access a user-assigned identity.
+	linkedAuthorizationFailed retry.RetriableError = "LinkedAuthorizationFailed"
+	// Occurs when the user-assigned identity does not exist.
+	failedIdentityOperation retry.RetriableError = "FailedIdentityOperation"
+)
+
 // NewCloudProvider returns a azure cloud provider client
-func NewCloudProvider(configFile string) (c *Client, e error) {
-	azureConfig := config.AzureConfig{}
-	if configFile != "" {
+func NewCloudProvider(configFile string, updateUserMSIMaxRetry int, updateUseMSIRetryInterval time.Duration) (c *Client, e error) {
+	client := &Client{
+		configFile: configFile,
+	}
+	if err := client.Init(); err != nil {
+		return nil, err
+	}
+	client.RetryClient = retry.NewRetryClient(updateUserMSIMaxRetry, updateUseMSIRetryInterval)
+	client.RetryClient.RegisterRetriableErrors(linkedAuthorizationFailed, failedIdentityOperation)
+	return client, nil
+}
+
+// Init initializes the cloud provider client based
+// on a config path or environment variables
+func (c *Client) Init() error {
+	c.Config = config.AzureConfig{}
+	if c.configFile != "" {
 		klog.V(6).Info("Populate AzureConfig from azure.json")
-		bytes, err := ioutil.ReadFile(configFile)
+		bytes, err := ioutil.ReadFile(c.configFile)
 		if err != nil {
-			klog.Errorf("Read file (%s) error: %+v", configFile, err)
-			return nil, err
+			klog.Errorf("Read file (%s) error: %+v", c.configFile, err)
+			return err
 		}
-		if err = yaml.Unmarshal(bytes, &azureConfig); err != nil {
+		if err = yaml.Unmarshal(bytes, &c.Config); err != nil {
 			klog.Errorf("Unmarshall error: %v", err)
-			return nil, err
+			return err
 		}
 	} else {
 		klog.V(6).Info("Populate AzureConfig from secret/environment variables")
-		azureConfig.Cloud = os.Getenv("CLOUD")
-		azureConfig.TenantID = os.Getenv("TENANT_ID")
-		azureConfig.ClientID = os.Getenv("CLIENT_ID")
-		azureConfig.ClientSecret = os.Getenv("CLIENT_SECRET")
-		azureConfig.SubscriptionID = os.Getenv("SUBSCRIPTION_ID")
-		azureConfig.ResourceGroupName = os.Getenv("RESOURCE_GROUP")
-		azureConfig.VMType = os.Getenv("VM_TYPE")
-		azureConfig.UseManagedIdentityExtension = strings.EqualFold(os.Getenv("USE_MSI"), "True")
-		azureConfig.UserAssignedIdentityID = os.Getenv("USER_ASSIGNED_MSI_CLIENT_ID")
+		c.Config.Cloud = os.Getenv("CLOUD")
+		c.Config.TenantID = os.Getenv("TENANT_ID")
+		c.Config.ClientID = os.Getenv("CLIENT_ID")
+		c.Config.ClientSecret = os.Getenv("CLIENT_SECRET")
+		c.Config.SubscriptionID = os.Getenv("SUBSCRIPTION_ID")
+		c.Config.ResourceGroupName = os.Getenv("RESOURCE_GROUP")
+		c.Config.VMType = os.Getenv("VM_TYPE")
+		c.Config.UseManagedIdentityExtension = strings.EqualFold(os.Getenv("USE_MSI"), "True")
+		c.Config.UserAssignedIdentityID = os.Getenv("USER_ASSIGNED_MSI_CLIENT_ID")
 	}
 
-	azureEnv, err := azure.EnvironmentFromName(azureConfig.Cloud)
+	azureEnv, err := azure.EnvironmentFromName(c.Config.Cloud)
 	if err != nil {
 		klog.Errorf("Get cloud env error: %+v", err)
-		return nil, err
+		return err
 	}
 
 	err = adal.AddToUserAgent(version.GetUserAgent("MIC", version.MICVersion))
 	if err != nil {
-		return nil, err
+		klog.Errorf("add to user agent error: %+v", err)
+		return err
 	}
 
-	oauthConfig, err := adal.NewOAuthConfig(azureEnv.ActiveDirectoryEndpoint, azureConfig.TenantID)
+	oauthConfig, err := adal.NewOAuthConfig(azureEnv.ActiveDirectoryEndpoint, c.Config.TenantID)
 	if err != nil {
 		klog.Errorf("Create OAuth config error: %+v", err)
-		return nil, err
+		return err
 	}
 
 	var spt *adal.ServicePrincipalToken
-	if azureConfig.UseManagedIdentityExtension {
+	if c.Config.UseManagedIdentityExtension {
 		// MSI endpoint is required for both types of MSI - system assigned and user assigned.
 		msiEndpoint, err := adal.GetMSIVMEndpoint()
 		if err != nil {
 			klog.Errorf("Failed to get MSI endpoint. Error: %+v", err)
-			return nil, err
+			return err
 		}
 		// UserAssignedIdentityID is empty, so we are going to use system assigned MSI
-		if azureConfig.UserAssignedIdentityID == "" {
+		if c.Config.UserAssignedIdentityID == "" {
 			klog.Infof("MIC using system assigned identity for authentication.")
 			spt, err = adal.NewServicePrincipalTokenFromMSI(msiEndpoint, azureEnv.ResourceManagerEndpoint)
 			if err != nil {
 				klog.Errorf("Get token from system assigned MSI error: %+v", err)
-				return nil, err
+				return err
 			}
 		} else { // User assigned identity usage.
-			klog.Infof("MIC using user assigned identity: %s for authentication.", utils.RedactClientID(azureConfig.UserAssignedIdentityID))
-			spt, err = adal.NewServicePrincipalTokenFromMSIWithUserAssignedID(msiEndpoint, azureEnv.ResourceManagerEndpoint, azureConfig.UserAssignedIdentityID)
+			klog.Infof("MIC using user assigned identity: %s for authentication.", utils.RedactClientID(c.Config.UserAssignedIdentityID))
+			spt, err = adal.NewServicePrincipalTokenFromMSIWithUserAssignedID(msiEndpoint, azureEnv.ResourceManagerEndpoint, c.Config.UserAssignedIdentityID)
 			if err != nil {
 				klog.Errorf("Get token from user assigned MSI error: %+v", err)
-				return nil, err
+				return err
 			}
 		}
 	} else { // This is the default scenario - use service principal to get the token.
 		spt, err = adal.NewServicePrincipalToken(
 			*oauthConfig,
-			azureConfig.ClientID,
-			azureConfig.ClientSecret,
+			c.Config.ClientID,
+			c.Config.ClientSecret,
 			azureEnv.ResourceManagerEndpoint,
 		)
 		if err != nil {
 			klog.Errorf("Get service principal token error: %+v", err)
-			return nil, err
+			return err
 		}
 	}
 
-	extClient := compute.NewVirtualMachineExtensionsClient(azureConfig.SubscriptionID)
+	extClient := compute.NewVirtualMachineExtensionsClient(c.Config.SubscriptionID)
 	extClient.BaseURI = azure.PublicCloud.ResourceManagerEndpoint
 	extClient.Authorizer = autorest.NewBearerAuthorizer(spt)
 	extClient.PollingDelay = 5 * time.Second
 
-	client := &Client{
-		Config:    azureConfig,
-		ExtClient: extClient,
-	}
-
-	client.VMSSClient, err = NewVMSSClient(azureConfig, spt)
+	c.VMSSClient, err = NewVMSSClient(c.Config, spt)
 	if err != nil {
 		klog.Errorf("Create VMSS Client error: %+v", err)
-		return nil, err
+		return err
 	}
-	client.VMClient, err = NewVirtualMachinesClient(azureConfig, spt)
+	c.VMClient, err = NewVirtualMachinesClient(c.Config, spt)
 	if err != nil {
 		klog.Errorf("Create VM Client error: %+v", err)
-		return nil, err
+		return err
 	}
 
-	return client, nil
-}
-
-func withInspection() autorest.PrepareDecorator {
-	return func(p autorest.Preparer) autorest.Preparer {
-		return autorest.PreparerFunc(func(r *http.Request) (*http.Request, error) {
-			klog.Infof("Inspecting Request: Method: %s \n URL: %s, URI: %s\n", r.Method, r.URL, r.RequestURI)
-
-			return p.Prepare(r)
-		})
-	}
+	return nil
 }
 
 // GetUserMSIs will return a list of all identities on the node or vmss based on value of isvmss
@@ -188,16 +200,44 @@ func (c *Client) UpdateUserMSI(addUserAssignedMSIIDs, removeUserAssignedMSIIDs [
 	for _, userAssignedMSIID := range addUserAssignedMSIIDs {
 		ids[userAssignedMSIID] = true
 	}
-	requiresUpdate := info.SetUserIdentities(ids)
 
-	if requiresUpdate {
-		klog.Infof("Updating user assigned MSIs on %s, assign [%d], unassign [%d]", name, len(addUserAssignedMSIIDs), len(removeUserAssignedMSIIDs))
-		timeStarted := time.Now()
-		if err := updateFunc(); err != nil {
-			return err
-		}
-		klog.V(6).Infof("UpdateUserMSI of %s completed in %s", name, time.Since(timeStarted))
+	if requiresUpdate := info.SetUserIdentities(ids); !requiresUpdate {
+		return nil
 	}
+
+	klog.Infof("Updating user assigned MSIs on %s, assign [%d], unassign [%d]", name, len(addUserAssignedMSIIDs), len(removeUserAssignedMSIIDs))
+	timeStarted := time.Now()
+	shouldRetry := func(err error) bool {
+		if err == nil {
+			return false
+		}
+
+		// Filter previously-assigned IDs based on which identities
+		// are erroneous from the last occurred error
+		erroneousIDs := extractIdentitiesFromError(err)
+		removedAny := false
+		for _, erroneousID := range erroneousIDs {
+			if removed := info.RemoveUserIdentity(erroneousID); removed {
+				removedAny = true
+				klog.Infof("Removing %s from ID list since it is erroneous", erroneousID)
+			}
+		}
+
+		// Only retry if there is at least one ID after deleting
+		remainingIDs := info.GetUserIdentityList()
+		if removedAny && len(remainingIDs) > 0 {
+			klog.Infof("Attempting to retry with ID list %v", remainingIDs)
+			return true
+		}
+
+		return false
+	}
+	if err := c.RetryClient.Do(updateFunc, shouldRetry); err != nil {
+		return err
+	}
+
+	klog.V(6).Infof("UpdateUserMSI of %s completed in %s", name, time.Since(timeStarted))
+
 	return nil
 }
 
@@ -243,16 +283,6 @@ const (
 	VMSSResourceType = "virtualMachineScaleSets"
 )
 
-func vmTypeOrDefault(r *azure.Resource, val string) string {
-	switch r.ResourceType {
-	case VMResourceType:
-		return "vm"
-	case VMSSResourceType:
-		return "vmss"
-	}
-	return val
-}
-
 // ParseResourceID is a slightly modified version of https://github.com/Azure/go-autorest/blob/528b76fd0ebec0682f3e3da7c808cd472b999615/autorest/azure/azure.go#L175
 // The modification here is to support a nested resource such as is the case for a node resource in a vmss.
 func ParseResourceID(resourceID string) (azure.Resource, error) {
@@ -274,4 +304,40 @@ func ParseResourceID(resourceID string) (azure.Resource, error) {
 	}
 
 	return result, nil
+}
+
+const (
+	// This matches identity resource IDs on an error message from ARM
+	userAssignedIdentitiesPatternText = `'(,?(?i)/subscriptions/[a-zA-Z0-9-_]+/resourcegroups/[a-zA-Z0-9-_]+/providers/Microsoft.ManagedIdentity/userAssignedIdentities/[a-zA-Z0-9-_]+)+'`
+)
+
+var (
+	userAssignedIdentitiesPattern = regexp.MustCompile(userAssignedIdentitiesPatternText)
+)
+
+func extractIdentitiesFromError(err error) []string {
+	var extracted []string
+	if err == nil {
+		return extracted
+	}
+
+	matches := userAssignedIdentitiesPattern.FindStringSubmatch(err.Error())
+	if len(matches) == 0 {
+		return extracted
+	}
+
+	match := matches[0]
+	// Remove leading and trailing single quotes
+	match = match[1 : len(match)-1]
+
+	for _, id := range strings.Split(match, ",") {
+		// Sanity check
+		if err := utils.ValidateResourceID(id); err != nil {
+			klog.Error(err)
+			continue
+		}
+		extracted = append(extracted, id)
+	}
+
+	return extracted
 }
