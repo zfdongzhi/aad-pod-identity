@@ -2,6 +2,7 @@ ORG_PATH=github.com/Azure
 PROJECT_NAME := aad-pod-identity
 REPO_PATH="$(ORG_PATH)/$(PROJECT_NAME)"
 NMI_BINARY_NAME := nmi
+NMI_WINDOWS_BINARY_NAME := nmiwindows
 MIC_BINARY_NAME := mic
 DEMO_BINARY_NAME := demo
 SIMPLE_CMD_BINARY_NAME := simple
@@ -42,6 +43,7 @@ REGISTRY_NAME ?= upstreamk8sci
 REGISTRY ?= $(REGISTRY_NAME).azurecr.io
 REPO_PREFIX ?= k8s/aad-pod-identity
 NMI_IMAGE ?= $(REPO_PREFIX)/$(NMI_BINARY_NAME):$(NMI_VERSION)
+NMI_WINDOWS_IMAGE ?= $(REPO_PREFIX)/$(NMI_WINDOWS_BINARY_NAME):$(NMI_VERSION)
 MIC_IMAGE ?= $(REPO_PREFIX)/$(MIC_BINARY_NAME):$(MIC_VERSION)
 DEMO_IMAGE ?= $(REPO_PREFIX)/$(DEMO_BINARY_NAME):$(DEMO_VERSION)
 IDENTITY_VALIDATOR_IMAGE ?= $(REPO_PREFIX)/$(IDENTITY_VALIDATOR_BINARY_NAME):$(IDENTITY_VALIDATOR_VERSION)
@@ -67,6 +69,10 @@ lint: $(TOOLS_DIR)/golangci-lint $(TOOLS_DIR)/misspell
 clean-nmi:
 	rm -rf bin/$(PROJECT_NAME)/$(NMI_BINARY_NAME)
 
+.PHONY: clean-nmi-windows
+clean-nmi-windows:
+	rm -rf bin/$(PROJECT_NAME)/"$(NMI_WINDOWS_BINARY_NAME).exe"
+
 .PHONY: clean-mic
 clean-mic:
 	rm -rf bin/$(PROJECT_NAME)/$(MIC_BINARY_NAME)
@@ -90,6 +96,12 @@ clean:
 .PHONY: build-nmi
 build-nmi: clean-nmi
 	CGO_ENABLED=0 PKG_NAME=github.com/Azure/$(PROJECT_NAME)/cmd/$(NMI_BINARY_NAME) $(MAKE) bin/$(PROJECT_NAME)/$(NMI_BINARY_NAME)
+
+.PHONY: build-nmi-windows
+build-nmi-windows: clean-nmi-windows
+	PKG_NAME=github.com/Azure/$(PROJECT_NAME)/cmd/$(NMI_BINARY_NAME)
+	BINARY_NAME=github.com/Azure/$(PROJECT_NAME)/bin/$(PROJECT_NAME)/"$(NMI_WINDOWS_BINARY_NAME).exe"
+	GOOS=windows GOARCH=amd64 go build $(GO_BUILD_OPTIONS) -o "$(BINARY_NAME)" "$(PKG_NAME)"
 
 .PHONY: build-mic
 build-mic: clean-mic
@@ -125,6 +137,10 @@ deepcopy-gen:
 image-nmi:
 	docker build -t "$(REGISTRY)/$(NMI_IMAGE)" --build-arg NMI_VERSION="$(NMI_VERSION)" --target=nmi .
 
+.PHONY: image-nmi-windows
+image-nmi-windows:
+	docker build -f Dockerfile.Windows -t "$(REGISTRY)/$(NMI_WINDOWS_IMAGE)" --build-arg NMI_VERSION="$(NMI_VERSION)" --target=nmiwindows .
+
 .PHONY: image-mic
 image-mic:
 	docker build -t "$(REGISTRY)/$(MIC_IMAGE)" --build-arg MIC_VERSION="$(MIC_VERSION)" --target=mic .
@@ -144,6 +160,11 @@ image:image-nmi image-mic image-demo image-identity-validator
 push-nmi: validate-version-NMI
 	az acr repository show --name $(REGISTRY_NAME) --image $(NMI_IMAGE) > /dev/null 2>&1; if [ $$? -eq 0 ]; then echo "$(NMI_IMAGE) already exists" && exit 1; fi
 	docker push $(REGISTRY)/$(NMI_IMAGE)
+
+.PHONY: push-nmi-windows
+push-nmi-windows: validate-version-NMI-Windows
+	az acr repository show --name $(REGISTRY_NAME) --image $(NMI_WINDOWS_IMAGE) > /dev/null 2>&1; if [ $$? -eq 0 ]; then echo "$(NMI_WINDOWS_IMAGE) already exists" && exit 1; fi
+	docker push $(REGISTRY)/$(NMI_WINDOWS_IMAGE)
 
 .PHONY: push-mic
 push-mic: validate-version-MIC

@@ -1,0 +1,14 @@
+FROM golang:rc-windowsservercore-1809
+
+WORKDIR /go/src/github.com/Azure/aad-pod-identity
+ADD . .
+RUN go mod download
+ARG NMI_VERSION
+
+RUN make build-nmi-windows
+
+RUN mkdir C:\nmiwindows
+WORKDIR /go/src/github.com/Azure/aad-pod-identity/bin/aad-pod-identity
+COPY nmiwindows.exe C:/nmiwindows
+
+ENTRYPOINT ["C:\\nmiwindows\\nmiwindows.exe"]
