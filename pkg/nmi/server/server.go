@@ -107,7 +107,7 @@ func (s *Server) Run() error {
 	mux.Handle("/", appHandler(s.defaultPathHandler))
 
 	klog.Infof("Listening on port %s", s.NMIPort)
-	if err := http.ListenAndServe("localhost:"+s.NMIPort, mux); err != nil {
+	if err := http.ListenAndServe(":"+s.NMIPort, mux); err != nil {
 		klog.Fatalf("Error creating http server: %+v", err)
 	}
 	return nil
