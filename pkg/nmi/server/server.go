@@ -71,12 +71,12 @@ type MetadataResponse struct {
 
 // NewServer will create a new Server with default values.
 func NewServer(micNamespace string, blockInstanceMetadata bool, metadataHeaderRequired bool, config *rest.Config) *Server {
-    clientSet := kubernetes.NewForConfigOrDie(config)
-    informer := informers.NewSharedInformerFactory(clientSet, 60*time.Second)
-    podObjCh := make(chan *v1.Pod, 100)
-    podClient := pod.NewPodClientWithPodInfoCh(informer, podObjCh)
+	clientSet := kubernetes.NewForConfigOrDie(config)
+	informer := informers.NewSharedInformerFactory(clientSet, 60*time.Second)
+	podObjCh := make(chan *v1.Pod, 100)
+	podClient := pod.NewPodClientWithPodInfoCh(informer, podObjCh)
 
-    reporter, err := metrics.NewReporter()
+	reporter, err := metrics.NewReporter()
 	if err != nil {
 		klog.Errorf("Error creating new reporter to emit metrics: %v", err)
 	} else {
@@ -89,8 +89,8 @@ func NewServer(micNamespace string, blockInstanceMetadata bool, metadataHeaderRe
 		BlockInstanceMetadata:  blockInstanceMetadata,
 		MetadataHeaderRequired: metadataHeaderRequired,
 		Reporter:               reporter,
-		PodClient:             podClient,
-		PodObjChannel:         podObjCh,
+		PodClient:              podClient,
+		PodObjChannel:          podObjCh,
 	}
 }
 
@@ -286,9 +286,10 @@ func (s *Server) getTokenForExceptedPod(rqClientID, rqResource string) ([]byte, 
 // if the requests contains client id it validates it against the admin
 // configured id.
 func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) {
-    var err error
+	var err error
 	var podns, podname, rqClientID, rqResource string
 	operationType := metrics.PodTokenOperationType
+	stausCode := http.StatusOK
 
 	defer func() {
 		// if podns and podname is empty, then means it has failed in the validation steps, so
@@ -299,13 +300,13 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 
 		if err != nil {
 			s.Reporter.ReportOperationAndStatusForWorkload(
-				operationType, rqResource, podns, podname, metrics.NMITokenOperationFailureCountM.M(1))
+				operationType, rqResource, podns, podname, strconv.Itoa(stausCode), metrics.NMITokenOperationFailureCountM.M(1))
 			return
 		}
 		s.Reporter.ReportOperationAndStatusForWorkload(
-			operationType, rqResource, podns, podname, metrics.NMITokenOperationCountM.M(1))
+			operationType, rqResource, podns, podname, strconv.Itoa(stausCode), metrics.NMITokenOperationCountM.M(1))
 	}()
-	
+
 	if s.MetadataHeaderRequired && parseMetadata(r) != "true" {
 		klog.Errorf("metadata header is not specified, req.method=%s reg.path=%s req.remote=%s", r.Method, r.URL.Path, parseRemoteAddr(r.RemoteAddr))
 		metadataNotSpecifiedError(w)
@@ -331,6 +332,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	podns, podname, rsName, selectors, err = s.KubeClient.GetPodInfo(podIP)
 	if err != nil {
 		klog.Errorf("missing podname for podip:%s, %+v", podIP, err)
+		stausCode = http.StatusInternalServerError
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -340,6 +342,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	exceptionList, err = s.KubeClient.ListPodIdentityExceptions(podns)
 	if err != nil {
 		klog.Errorf("getting list of azurepodidentityexceptions in %s namespace failed with error: %+v", podns, err)
+		stausCode = http.StatusInternalServerError
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -351,6 +354,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 		response, errorCode, err := s.getTokenForExceptedPod(rqClientID, rqResource)
 		if err != nil {
 			klog.Errorf("failed to get service principal token for pod:%s/%s.  Error code: %d. Error: %+v", podns, podname, errorCode, err)
+			stausCode = errorCode
 			http.Error(w, err.Error(), errorCode)
 			return
 		}
@@ -362,7 +366,8 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	podID, err = s.TokenClient.GetIdentities(r.Context(), podns, podname, rqClientID)
 	if err != nil {
 		klog.Errorf("failed to get matching identities for pod: %s/%s, error: %+v", podns, podname, err)
-		http.Error(w, err.Error(), getErrorResponseStatusCode(podID != nil))
+		stausCode = getErrorResponseStatusCode(podID != nil)
+		http.Error(w, err.Error(), stausCode)
 		return
 	}
 
@@ -370,6 +375,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	token, err = s.TokenClient.GetToken(r.Context(), rqClientID, rqResource, *podID)
 	if err != nil {
 		klog.Errorf("failed to get service principal token for pod: %s/%s, error: %+v", podns, podname, err)
+		stausCode = http.StatusInternalServerError
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -378,6 +384,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	response, err = json.Marshal(newMSIResponse(*token))
 	if err != nil {
 		klog.Errorf("failed to marshal service principal token for pod: %s/%s, error: %+v", podns, podname, err)
+		stausCode = http.StatusInternalServerError
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
