@@ -318,12 +318,14 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 
 	if podIP == "" {
 		klog.Error("request remote address is empty")
-		http.Error(w, "request remote address is empty", http.StatusInternalServerError)
+		stausCode = http.StatusInternalServerError
+		http.Error(w, "request remote address is empty", stausCode)
 		return
 	}
 	if !validateResourceParamExists(rqResource) {
 		klog.Warning("parameter resource cannot be empty")
-		http.Error(w, "parameter resource cannot be empty", http.StatusBadRequest)
+		stausCode = http.StatusBadRequest
+		http.Error(w, "parameter resource cannot be empty", stausCode)
 		return
 	}
 
@@ -333,7 +335,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	if err != nil {
 		klog.Errorf("missing podname for podip:%s, %+v", podIP, err)
 		stausCode = http.StatusInternalServerError
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), stausCode)
 		return
 	}
 	// set ns for using in metrics
@@ -343,7 +345,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	if err != nil {
 		klog.Errorf("getting list of azurepodidentityexceptions in %s namespace failed with error: %+v", podns, err)
 		stausCode = http.StatusInternalServerError
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), stausCode)
 		return
 	}
 
@@ -375,6 +377,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	token, err = s.TokenClient.GetToken(r.Context(), rqClientID, rqResource, *podID)
 	if err != nil {
 		klog.Errorf("failed to get service principal token for pod: %s/%s, error: %+v", podns, podname, err)
+		// Mark stausCode as StatusInternalServerError since we would like to consider this as nmi itself issue for alerting purpose
 		stausCode = http.StatusInternalServerError
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
@@ -385,7 +388,7 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	if err != nil {
 		klog.Errorf("failed to marshal service principal token for pod: %s/%s, error: %+v", podns, podname, err)
 		stausCode = http.StatusInternalServerError
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), stausCode)
 		return
 	}
 	w.Write(response)
