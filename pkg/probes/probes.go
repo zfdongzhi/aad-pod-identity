@@ -1,9 +1,13 @@
 package probes
 
 import (
+	"encoding/json"
 	"net/http"
 
+	msg "github.com/Microsoft/hcnproxy/pkg/types"
 	"k8s.io/klog/v2"
+
+	hcnclient "github.com/Microsoft/hcnproxy/pkg/client"
 )
 
 // InitHealthProbe - sets up a health probe which responds with success (200 - OK) once its initialized.
@@ -38,8 +42,52 @@ func Start(port string) {
 // InitAndStart initializes the default probes and starts the http listening port.
 func InitAndStart(port string, condition *bool) {
 	InitHealthProbe(condition)
-	klog.Infof("initialized health probe on port %s", port)
-	// start the probe.
+	klog.Infof("Initialized health probe on port %s", port)
+
+	// Start the probe.
 	Start(port)
 	klog.Info("started health probe")
+}
+
+// InitAndStartNMIWindowsProbe - Initialize the nmi windows probes and starts the http listening port.
+func InitAndStartNMIWindowsProbe(port string, condition *bool, node string) {
+	initNMIWindowsHealthProbe(condition, node)
+	klog.Infof("Initialized nmi Windows health probe on port %s", port)
+
+	// Start the nmi windows probe.
+	Start(port)
+	klog.Info("Started NMI Windows health probe")
+}
+
+func initNMIWindowsHealthProbe(condition *bool, nodeName string) {
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+
+		klog.Info("Started to handle healthz: %s", nodeName)
+
+		request := msg.HNSRequest{
+			Entity:    msg.EndpointV1,
+			Operation: msg.Enumerate,
+			Request:   nil,
+		}
+
+		klog.Info("Started to call hcn agent.")
+
+		res := hcnclient.InvokeHNSRequest(request)
+		if res.Error != nil {
+			klog.Info("Call hcn agent failed with error: %+v", res.Error)
+			w.WriteHeader(500)
+		} else {
+			klog.Info("Call hcn agent Successfully.")
+
+			b, _ := json.Marshal(res)
+			klog.Infof("Server response: %s", string(b))
+			w.WriteHeader(500)
+		}
+
+		if *condition {
+			w.Write([]byte("Active"))
+		} else {
+			w.Write([]byte("Not Active"))
+		}
+	})
 }
