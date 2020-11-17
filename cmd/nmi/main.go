@@ -14,7 +14,6 @@ import (
 	"github.com/Azure/aad-pod-identity/pkg/nmi"
 	"github.com/Azure/aad-pod-identity/pkg/nmi/server"
 	"github.com/Azure/aad-pod-identity/pkg/probes"
-	"github.com/Azure/aad-pod-identity/pkg/utils"
 	"github.com/Azure/aad-pod-identity/version"
 
 	"github.com/spf13/pflag"
@@ -38,6 +37,7 @@ var (
 	nmiPort                            = pflag.String("nmi-port", defaultNmiPort, "NMI application port")
 	metadataIP                         = pflag.String("metadata-ip", defaultMetadataIP, "instance metadata host ip")
 	metadataPort                       = pflag.String("metadata-port", defaultMetadataPort, "instance metadata host ip")
+	hostIP                             = pflag.String("host-ip", "", "host IP address")
 	nodename                           = pflag.String("node", "", "node name")
 	ipTableUpdateTimeIntervalInSeconds = pflag.Int("ipt-update-interval-sec", defaultIPTableUpdateTimeIntervalInSeconds, "update interval of iptables")
 	forceNamespaced                    = pflag.Bool("forceNamespaced", false, "Forces mic to namespace identities, binding, and assignment")
@@ -80,15 +80,16 @@ func main() {
 	if *versionInfo {
 		version.PrintVersionAndExit()
 	}
-
-	// check if the cni is kubenet from the --network-plugin defined in kubelet config
-	isKubenet, err := utils.IsKubenetCNI(*kubeletConfig)
-	if err != nil {
-		klog.Fatalf("failed to check if CNI plugin is kubenet, error: %+v", err)
-	}
-	if !*allowNetworkPluginKubenet && isKubenet {
-		klog.Fatalf("AAD Pod Identity is not supported for Kubenet. Review https://azure.github.io/aad-pod-identity/docs/configure/aad_pod_identity_on_kubenet/ for more details.")
-	}
+	/*
+		// check if the cni is kubenet from the --network-plugin defined in kubelet config
+		isKubenet, err := utils.IsKubenetCNI(*kubeletConfig)
+		if err != nil {
+			klog.Fatalf("failed to check if CNI plugin is kubenet, error: %+v", err)
+		}
+		if !*allowNetworkPluginKubenet && isKubenet {
+			klog.Fatalf("AAD Pod Identity is not supported for Kubenet. Review https://azure.github.io/aad-pod-identity/docs/configure/aad_pod_identity_on_kubenet/ for more details.")
+		}
+	*/
 
 	klog.Infof("starting nmi process. Version: %v. Build date: %v.", version.NMIVersion, version.BuildDate)
 	// Bug tracks removal of this delay: https://o365exchange.visualstudio.com/O365%20Core/_workitems/edit/1739605
@@ -137,6 +138,7 @@ func main() {
 	s.MetadataIP = *metadataIP
 	s.MetadataPort = *metadataPort
 	s.NMIPort = *nmiPort
+	s.HostIP = *hostIP
 	s.NodeName = *nodename
 	s.IPTableUpdateTimeIntervalInSeconds = *ipTableUpdateTimeIntervalInSeconds
 
