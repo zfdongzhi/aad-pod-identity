@@ -81,7 +81,7 @@ func initNMIWindowsHealthProbe(condition *bool, nodeName string) {
 
 			b, _ := json.Marshal(res)
 			klog.Infof("Server response: %s", string(b))
-			w.WriteHeader(500)
+			w.WriteHeader(200)
 		}
 
 		if *condition {
