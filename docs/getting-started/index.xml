@@ -1,0 +1,150 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Azure Active Directory Pod Identity for Kubernetes – Getting Started</title><link>https://azure.github.io/aad-pod-identity/docs/getting-started/</link><description>Recent content in Getting Started on Azure Active Directory Pod Identity for Kubernetes</description><generator>Hugo -- gohugo.io</generator><lastBuildDate>Sun, 04 Oct 2020 00:00:00 +0000</lastBuildDate><atom:link href="https://azure.github.io/aad-pod-identity/docs/getting-started/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Role Assignment</title><link>https://azure.github.io/aad-pod-identity/docs/getting-started/role-assignment/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://azure.github.io/aad-pod-identity/docs/getting-started/role-assignment/</guid><description>
+&lt;p>Your cluster will need the correct role assignment configuration to perform Azure-related operations such as assigning and un-assigning the identity on the underlying VM/VMSS. You can run the following commands to help you set up the appropriate role assignments for your cluster identity before deploying aad-pod-identity (assuming you are running an AKS cluster).&lt;/p>
+&lt;p>AKS and aks-engine clusters require an identity to communicate with Azure. This identity can be either a &lt;strong>managed identity&lt;/strong> (in the form of system-assigned identity or user-assigned identity) or a &lt;strong>service principal&lt;/strong>. This section explains various role assignments that need to be performed before using AAD Pod Identity. Without the proper role assignments, your Azure cluster will not have the correct permission to assign and un-assign identities from the underlying virtual machines (VM) or virtual machine scale sets (VMSS).&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">&lt;span style="color:#204a87">export&lt;/span> &lt;span style="color:#000">SUBSCRIPTION_ID&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;lt;SubscriptionID&amp;gt;&amp;#34;&lt;/span>
+&lt;span style="color:#204a87">export&lt;/span> &lt;span style="color:#000">RESOURCE_GROUP&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;lt;AKSResourceGroup&amp;gt;&amp;#34;&lt;/span>
+&lt;span style="color:#204a87">export&lt;/span> &lt;span style="color:#000">CLUSTER_NAME&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;lt;AKSClusterName&amp;gt;&amp;#34;&lt;/span>
+&lt;span style="color:#204a87">export&lt;/span> &lt;span style="color:#000">CLUSTER_LOCATION&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;lt;AKSClusterLocation&amp;gt;&amp;#34;&lt;/span>
+&lt;span style="color:#8f5902;font-style:italic"># if you are planning to deploy your user-assigned identities in a separate resource group&lt;/span>
+&lt;span style="color:#204a87">export&lt;/span> &lt;span style="color:#000">IDENTITY_RESOURCE_GROUP&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;lt;IdentityResourceGroup&amp;gt;&amp;#34;&lt;/span>
+./hack/role-assignment.sh
+&lt;/code>&lt;/pre>&lt;/div>&lt;blockquote>
+&lt;p>Note: &lt;code>&amp;lt;AKSResourceGroup&amp;gt;&lt;/code> is where your AKS cluster is deployed to.&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="introduction">Introduction&lt;/h2>
+&lt;p>Currently, &lt;a href="../../concepts/mic">MIC&lt;/a> uses one of the following two ways to authenticate with Azure:&lt;/p>
+&lt;ol>
+&lt;li>&lt;a href="https://docs.microsoft.com/en-us/azure/aks/use-managed-identity">Managed Identity&lt;/a> (system-assigned identity or user-assigned identity)&lt;/li>
+&lt;li>&lt;a href="https://docs.microsoft.com/en-us/azure/aks/kubernetes-service-principal">Service Principal&lt;/a> through &lt;code>/etc/kubernetes/azure.json&lt;/code>, which is available in every node, or credentials defined by environment variables;&lt;/li>
+&lt;/ol>
+&lt;blockquote>
+&lt;p>Clusters with managed identity are only compatible with AAD Pod Identity 1.5+.&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="more-on-authentication-methods">More on authentication methods&lt;/h2>
+&lt;p>&lt;a href="https://kubernetes-sigs.github.io/cloud-provider-azure/install/configs/">&lt;code>/etc/kubernetes/azure.json&lt;/code>&lt;/a> is a well-known JSON file in each node that provides the details about which method MIC uses for authentication:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Authentication method&lt;/th>
+&lt;th>&lt;code>/etc/kubernetes/azure.json&lt;/code> fields used&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>System-assigned managed identity&lt;/td>
+&lt;td>&lt;code>useManagedIdentityExtension: true&lt;/code> and &lt;code>userAssignedIdentityID:&amp;quot;&amp;quot;&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>User-assigned managed identity&lt;/td>
+&lt;td>&lt;code>useManagedIdentityExtension: true&lt;/code> and &lt;code>userAssignedIdentityID:&amp;quot;&amp;lt;UserAssignedIdentityID&amp;gt;&amp;quot;&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Service principal (default)&lt;/td>
+&lt;td>&lt;code>aadClientID: &amp;quot;&amp;lt;AADClientID&amp;gt;&amp;quot;&lt;/code> and &lt;code>aadClientSecret: &amp;quot;&amp;lt;AADClientSecret&amp;gt;&amp;quot;&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="obtaining-the-id-of-the-managed-identity--service-principal">Obtaining the ID of the managed identity / service principal&lt;/h2>
+&lt;p>After your cluster is provisioned, depending on your cluster identity configuration, run one of the following commands to retrieve the &lt;strong>ID&lt;/strong> of your managed identity or service principal, which will be used for role assignment in the next section:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Cluster configuration&lt;/th>
+&lt;th>Command&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>AKS cluster with service principal&lt;/td>
+&lt;td>&lt;code>az aks show -g &amp;lt;AKSResourceGroup&amp;gt; -n &amp;lt;AKSClusterName&amp;gt; --query servicePrincipalProfile.clientId -otsv&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>AKS cluster with managed identity&lt;/td>
+&lt;td>&lt;code>az aks show -g &amp;lt;AKSResourceGroup&amp;gt; -n &amp;lt;AKSClusterName&amp;gt; --query identityProfile.kubeletidentity.clientId -otsv&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>aks-engine cluster with service principal&lt;/td>
+&lt;td>Use the client ID of the service principal defined in the API model&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>aks-engine cluster with system-assigned identity&lt;/td>
+&lt;td>&lt;code>az &amp;lt;vm|vmss&amp;gt; identity show -g &amp;lt;NodeResourceGroup&amp;gt; -n &amp;lt;VM|VMSS Name&amp;gt; --query principalId -otsv&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>aks-engine cluster with user-assigned identity&lt;/td>
+&lt;td>&lt;code>az &amp;lt;vm|vmss&amp;gt; identity show -g &amp;lt;NodeResourceGroup&amp;gt; -n &amp;lt;VM|VMSS Name&amp;gt; --query userAssignedIdentities -otsv&lt;/code>, then copy the &lt;code>clientID&lt;/code> of the selected user-assigned identity&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="performing-role-assignments">Performing role assignments&lt;/h2>
+&lt;p>The roles &lt;a href="https://docs.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#managed-identity-operator">&lt;strong>Managed Identity Operator&lt;/strong>&lt;/a> and &lt;a href="https://docs.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#virtual-machine-contributor">&lt;strong>Virtual Machine Contributor&lt;/strong>&lt;/a> must be assigned to the cluster managed identity or service principal, identified by the &lt;strong>ID&lt;/strong> obtained above, before deploying AAD Pod Identity so that it can assign and un-assign identities from the underlying VM/VMSS.&lt;/p>
+&lt;blockquote>
+&lt;p>For AKS cluster, the node resource group refers to the resource group with a &lt;code>MC_&lt;/code> prefix, which contains all of the infrastructure resources associated with the cluster like VM/VMSS.&lt;/p>
+&lt;/blockquote>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">az role assignment create --role &lt;span style="color:#4e9a06">&amp;#34;Managed Identity Operator&amp;#34;&lt;/span> --assignee &amp;lt;ID&amp;gt; --scope /subscriptions/&amp;lt;SubscriptionID&amp;gt;/resourcegroups/&amp;lt;NodeResourceGroup&amp;gt;
+az role assignment create --role &lt;span style="color:#4e9a06">&amp;#34;Virtual Machine Contributor&amp;#34;&lt;/span> --assignee &amp;lt;ID&amp;gt; --scope /subscriptions/&amp;lt;SubscriptionID&amp;gt;/resourcegroups/&amp;lt;NodeResourceGroup&amp;gt;
+&lt;/code>&lt;/pre>&lt;/div>&lt;blockquote>
+&lt;p>RBAC and non-RBAC clusters require the same role assignments.&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="user-assigned-identities-that-are-not-within-the-node-resource-group">User-assigned identities that are not within the node resource group&lt;/h2>
+&lt;p>There are additional role assignments required if you wish to assign user-assigned identities that are not within the node resource group. You can run the following command to assign the &lt;strong>Managed Identity Operator&lt;/strong> role with the identity resource group scope:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">az role assignment create --role &lt;span style="color:#4e9a06">&amp;#34;Managed Identity Operator&amp;#34;&lt;/span> --assignee &amp;lt;ID&amp;gt; --scope /subscriptions/&amp;lt;SubscriptionID&amp;gt;/resourcegroups/&amp;lt;IdentityResourceGroup&amp;gt;
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>To enable fine-grained control on which user-assigned identity the cluster has access to, run the following command:&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">az role assignment create --role &lt;span style="color:#4e9a06">&amp;#34;Managed Identity Operator&amp;#34;&lt;/span> --assignee &amp;lt;ID&amp;gt; --scope /subscriptions/&amp;lt;SubscriptionID&amp;gt;/resourcegroups/&amp;lt;IdentityResourceGroup&amp;gt;/providers/Microsoft.ManagedIdentity/userAssignedIdentities/&amp;lt;IdentityName&amp;gt;
+&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="useful-links">Useful links&lt;/h2>
+&lt;ul>
+&lt;li>&lt;a href="https://docs.microsoft.com/en-us/azure/aks/use-managed-identity">Use managed identities in AKS&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://docs.microsoft.com/en-us/azure/aks/kubernetes-service-principal">Service principals with AKS&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://docs.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/overview">What are managed identities for Azure resources?&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Installation</title><link>https://azure.github.io/aad-pod-identity/docs/getting-started/installation/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://azure.github.io/aad-pod-identity/docs/getting-started/installation/</guid><description>
+&lt;h2 id="quick-install">Quick Install&lt;/h2>
+&lt;p>To install/upgrade AAD Pod Identity on RBAC-enabled clusters:&lt;/p>
+&lt;pre>&lt;code>kubectl apply -f https://raw.githubusercontent.com/Azure/aad-pod-identity/v1.7.0/deploy/infra/deployment-rbac.yaml
+&lt;/code>&lt;/pre>&lt;details>
+&lt;summary>Result&lt;/summary>
+&lt;pre>&lt;code>serviceaccount/aad-pod-id-nmi-service-account created
+customresourcedefinition.apiextensions.k8s.io/azureassignedidentities.aadpodidentity.k8s.io created
+customresourcedefinition.apiextensions.k8s.io/azureidentitybindings.aadpodidentity.k8s.io created
+customresourcedefinition.apiextensions.k8s.io/azureidentities.aadpodidentity.k8s.io created
+customresourcedefinition.apiextensions.k8s.io/azurepodidentityexceptions.aadpodidentity.k8s.io created
+clusterrole.rbac.authorization.k8s.io/aad-pod-id-nmi-role created
+clusterrolebinding.rbac.authorization.k8s.io/aad-pod-id-nmi-binding created
+daemonset.apps/nmi created
+serviceaccount/aad-pod-id-mic-service-account created
+clusterrole.rbac.authorization.k8s.io/aad-pod-id-mic-role created
+clusterrolebinding.rbac.authorization.k8s.io/aad-pod-id-mic-binding created
+deployment.apps/mic created
+&lt;/code>&lt;/pre>&lt;/details>&lt;br/>
+&lt;p>To install/upgrade aad-pod-identity on RBAC-disabled clusters:&lt;/p>
+&lt;pre>&lt;code>kubectl apply -f https://raw.githubusercontent.com/Azure/aad-pod-identity/v1.7.0/deploy/infra/deployment.yaml
+&lt;/code>&lt;/pre>&lt;details>
+&lt;summary>Result&lt;/summary>
+&lt;pre>&lt;code>customresourcedefinition.apiextensions.k8s.io/azureassignedidentities.aadpodidentity.k8s.io created
+customresourcedefinition.apiextensions.k8s.io/azureidentitybindings.aadpodidentity.k8s.io created
+customresourcedefinition.apiextensions.k8s.io/azureidentities.aadpodidentity.k8s.io created
+customresourcedefinition.apiextensions.k8s.io/azurepodidentityexceptions.aadpodidentity.k8s.io created
+daemonset.apps/nmi created
+deployment.apps/mic created
+&lt;/code>&lt;/pre>&lt;/details>&lt;br/>
+&lt;p>For AKS clusters, you will have to allow MIC and AKS add-ons to access IMDS without being intercepted by NMI:&lt;/p>
+&lt;pre>&lt;code>kubectl apply -f https://raw.githubusercontent.com/Azure/aad-pod-identity/v1.7.0/deploy/infra/mic-exception.yaml
+&lt;/code>&lt;/pre>&lt;blockquote>
+&lt;p>WARNING: failure to apply &lt;code>mic-exception.yaml&lt;/code> in AKS clusters will result in token failures for AKS addons using managed identity for authentication.&lt;/p>
+&lt;/blockquote>
+&lt;details>
+&lt;summary>Result&lt;/summary>
+&lt;pre>&lt;code>azurepodidentityexception.aadpodidentity.k8s.io/mic-exception created
+azurepodidentityexception.aadpodidentity.k8s.io/aks-addon-exception created
+&lt;/code>&lt;/pre>&lt;/details>
+&lt;h2 id="helm">Helm&lt;/h2>
+&lt;p>AAD Pod Identity allows users to customize their installation via Helm.&lt;/p>
+&lt;blockquote>
+&lt;p>Although AAD Pod Identity helm chart is backward with Helm 2, it is recommended to use Helm 3 instead.&lt;/p>
+&lt;/blockquote>
+&lt;pre>&lt;code>helm repo add aad-pod-identity https://raw.githubusercontent.com/Azure/aad-pod-identity/master/charts
+# Helm 3
+helm install aad-pod-identity aad-pod-identity/aad-pod-identity
+# Helm 2
+helm install aad-pod-identity/aad-pod-identity --set=installCRDs=true
+&lt;/code>&lt;/pre>&lt;h3 id="values">Values&lt;/h3>
+&lt;p>For a list of customizable values that can be injected when invoking &lt;code>helm install&lt;/code>, please see the &lt;a href="https://github.com/Azure/aad-pod-identity/tree/master/charts/aad-pod-identity#configuration">Helm chart configurations&lt;/a>.&lt;/p></description></item></channel></rss>
