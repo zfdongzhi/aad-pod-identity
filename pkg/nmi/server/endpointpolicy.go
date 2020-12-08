@@ -38,9 +38,13 @@ func ApplyEndpointRoutePolicy(podIP string, metadataIP string, metadataPort stri
 
 	if err != nil {
 		if endpointPolicyError, ok := err.(*endpointPolicyError); ok {
-			return fmt.Errorf("Get endpoint for Pod IP - %s. Error: %w", podIP, endpointPolicyError.err)
+			if endpointPolicyError.errType == InvalidOperation {
+				return fmt.Errorf("Get endpoint for Pod IP - %s. Error: %w", podIP, endpointPolicyError.err)
+			} else if endpointPolicyError.errType == NotFound {
+				klog.Infof("No deleting action: no endpoint found for Pod IP - %s.", podIP)
+				return nil
+			}
 		}
-
 		return fmt.Errorf("Get endpoint for Pod IP - %s. Error: %w", podIP, err)
 	}
 
