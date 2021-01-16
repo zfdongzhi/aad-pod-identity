@@ -14,6 +14,7 @@ import (
 	"github.com/Azure/aad-pod-identity/pkg/probes"
 	"github.com/Azure/aad-pod-identity/version"
 	"github.com/spf13/pflag"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
@@ -99,6 +100,10 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Could not read config properly. Check the k8s config file, %+v", err)
 	}
+	clientSet, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		klog.Fatalf("Could not build clientSet: %+v", err)
+	}
 
 	exit := make(<-chan struct{})
 	client.Start(exit)
@@ -136,7 +141,8 @@ func main() {
 	if runtime.GOOS == "windows" {
 		// NMI Windows health probe will report successful if it can call hcn agent sucessfully,
 		// or it will return 500 error and the nmi windows pod will get reboot.
-		probes.InitAndStartNMIWindowsProbe(*httpProbePort, &s.Initialized, *nodename)
+		probes.InitAndStartNMIWindowsProbe(*httpProbePort, &s.Initialized, *nodename, clientSet)
+
 		redirector = server.WindowsRedirector(s, subRoutineDone)
 	} else {
 		// NMI Linux Health probe will always report success once its started. The contents

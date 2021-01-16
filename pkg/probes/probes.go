@@ -7,6 +7,9 @@ import (
 	msg "github.com/Microsoft/hcnproxy/pkg/types"
 
 	hcnclient "github.com/Microsoft/hcnproxy/pkg/client"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 
 	"k8s.io/klog"
 )
@@ -52,8 +55,8 @@ func InitAndStart(port string, condition *bool) {
 }
 
 // InitAndStartNMIWindowsProbe - Initialize the nmi windows probes and starts the http listening port.
-func InitAndStartNMIWindowsProbe(port string, condition *bool, node string) {
-	initNMIWindowsHealthProbe(condition, node)
+func InitAndStartNMIWindowsProbe(port string, condition *bool, node string, clientSet *kubernetes.Clientset) {
+	initNMIWindowsHealthProbe(condition, node, clientSet)
 	klog.Infof("Initialized nmi Windows health probe on port %s", port)
 
 	// Start the nmi windows probe.
@@ -61,7 +64,7 @@ func InitAndStartNMIWindowsProbe(port string, condition *bool, node string) {
 	klog.Info("Started NMI Windows health probe")
 }
 
-func initNMIWindowsHealthProbe(condition *bool, nodeName string) {
+func initNMIWindowsHealthProbe(condition *bool, nodeName string, clientSet *kubernetes.Clientset) {
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 
 		klog.Info("Started to handle healthz: %s", nodeName)
@@ -77,12 +80,36 @@ func initNMIWindowsHealthProbe(condition *bool, nodeName string) {
 		res := hcnclient.InvokeHNSRequest(request)
 		if res.Error != nil {
 			klog.Info("Call hcn agent failed with error: %+v", res.Error)
+
+			// Taint the node if hcn agent is not running in the node.
+			currentNode, err := clientSet.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
+			if err != nil {
+				klog.Errorf("Get node %s failed with error: %+v", nodeName, err)
+			}
+			currentNode.Spec.Taints = append(currentNode.Spec.Taints, corev1.Taint{Key: "hcnagentfailed", Effect: corev1.TaintEffectNoSchedule})
+			_, err = clientSet.CoreV1().Nodes().Update(currentNode)
+			if err != nil {
+				klog.Errorf("Taint node %s failed with error: %+v", nodeName, err)
+			}
+
 			w.WriteHeader(500)
 		} else {
 			klog.Info("Call hcn agent Successfully.")
-
 			b, _ := json.Marshal(res)
 			klog.Infof("Server response: %s", string(b))
+
+			// Remove the taint of node if the hcn agent is running successfully.
+			currentNode, err := clientSet.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
+			if err != nil {
+				klog.Errorf("Get node %s failed with error: %+v", nodeName, err)
+			}
+
+			currentNode.Spec.Taints = removeTaint(currentNode.Spec.Taints, "hcnagentfailed")
+			_, err = clientSet.CoreV1().Nodes().Update(currentNode)
+			if err != nil {
+				klog.Errorf("Taint node %s failed with error: %+v", nodeName, err)
+			}
+
 			w.WriteHeader(200)
 		}
 
@@ -92,4 +119,16 @@ func initNMIWindowsHealthProbe(condition *bool, nodeName string) {
 			w.Write([]byte("Not Active"))
 		}
 	})
+}
+
+func removeTaint(taints []corev1.Taint, taintName string) []corev1.Taint {
+	var newTaints []corev1.Taint
+
+	for _, taint := range taints {
+		if taint.Key == taintName {
+			continue
+		}
+		newTaints = append(newTaints, taint)
+	}
+	return newTaints
 }
