@@ -39,13 +39,13 @@ func ApplyEndpointRoutePolicy(podIP string, metadataIP string, metadataPort stri
 	if err != nil {
 		if endpointPolicyError, ok := err.(*endpointPolicyError); ok {
 			if endpointPolicyError.errType == InvalidOperation {
-				return fmt.Errorf("Error: %v", endpointPolicyError.err)
+				return endpointPolicyError.err
 			} else if endpointPolicyError.errType == NotFound {
 				klog.Infof("Route policy will not be applied for pod: %v", endpointPolicyError.err)
 				return nil
 			}
 		}
-		return fmt.Errorf("Error: %v", err)
+		return err
 	}
 
 	err = addEndpointPolicy(endpoint, metadataIP, metadataPort, nmiIP, nmiPort)
@@ -67,13 +67,13 @@ func DeleteEndpointRoutePolicy(podIP string, metadataIP string) error {
 	if err != nil {
 		if endpointPolicyError, ok := err.(*endpointPolicyError); ok {
 			if endpointPolicyError.errType == InvalidOperation {
-				return fmt.Errorf("Error: %v", endpointPolicyError.err)
+				return endpointPolicyError.err
 			} else if endpointPolicyError.errType == NotFound {
 				klog.Infof("Route policy will not be applied for pod: %v", endpointPolicyError.err)
 				return nil
 			}
 		}
-		return fmt.Errorf("Error: %v", err)
+		return err
 	}
 
 	err = deleteEndpointPolicy(endpoint, metadataIP)
