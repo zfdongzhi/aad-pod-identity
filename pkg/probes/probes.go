@@ -1,7 +1,6 @@
 package probes
 
 import (
-	"encoding/json"
 	"net/http"
 
 	msg "github.com/Microsoft/hcnproxy/pkg/types"
@@ -78,9 +77,6 @@ func initNMIWindowsHealthProbe(condition *bool, nodeName string) {
 			w.WriteHeader(500)
 		} else {
 			klog.Info("Call hcn agent Successfully.")
-
-			b, _ := json.Marshal(res)
-			klog.Infof("Server response: %s", string(b))
 			w.WriteHeader(200)
 		}
 

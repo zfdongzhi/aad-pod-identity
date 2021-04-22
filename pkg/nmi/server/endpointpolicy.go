@@ -184,7 +184,7 @@ func deleteEndpointPolicy(endpoint *v1.HNSEndpoint, metadataIP string) error {
 
 func callHcnProxyAgent(req msg.HNSRequest) ([]byte, error) {
 	retryCount := 1
-	maxRetryCount := 4
+	maxRetryCount := 9
 	var sleepFactor time.Duration = 1
 
 	klog.Info("Calling HNS Agent")
