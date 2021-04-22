@@ -78,9 +78,6 @@ func initNMIWindowsHealthProbe(condition *bool, nodeName string) {
 			w.WriteHeader(500)
 		} else {
 			klog.Info("Call hcn agent Successfully.")
-
-			b, _ := json.Marshal(res)
-			klog.Infof("Server response: %s", string(b))
 			w.WriteHeader(200)
 		}
 
