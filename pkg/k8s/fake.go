@@ -53,3 +53,8 @@ func (c *FakeClient) GetSecret(secretRef *v1.SecretReference) (*v1.Secret, error
 func (c *FakeClient) Start(exit <-chan struct{}) {
 
 }
+
+// GetSecret returns secret the secretRef represents
+func (c *FakeClient) ListPods(ns string) (*v1.PodList, error) {
+	return nil, nil
+}

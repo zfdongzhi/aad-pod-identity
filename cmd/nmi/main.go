@@ -154,7 +154,7 @@ func main() {
 	if runtime.GOOS == "windows" {
 		// NMI Windows health probe will report successful if it can call hcn agent sucessfully,
 		// or it will return 500 error and the nmi windows pod will get reboot.
-		probes.InitAndStartNMIWindowsProbe(*httpProbePort, &s.Initialized, *nodename)
+		probes.InitAndStartNMIWindowsProbe(*httpProbePort, &s.Initialized, *nodename, s)
 		redirector = server.WindowsRedirector(s, subRoutineDone)
 	} else {
 		// NMI Linux Health probe will always report success once its started. The contents

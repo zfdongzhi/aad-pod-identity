@@ -45,6 +45,8 @@ type Client interface {
 	GetSecret(secretRef *v1.SecretReference) (*v1.Secret, error)
 	// ListPodIdentityExceptions returns list of azurepodidentityexceptions
 	ListPodIdentityExceptions(namespace string) (*[]aadpodid.AzurePodIdentityException, error)
+	// ListPods returns list of pods in ns namespace
+	ListPods(ns string) (*v1.PodList, error)
 }
 
 // KubeClient k8s client
@@ -266,6 +268,15 @@ func (c *KubeClient) GetSecret(secretRef *v1.SecretReference) (*v1.Secret, error
 		return nil, err
 	}
 	return secret, nil
+}
+
+// ListPods returns list of pods in ns namespace
+func (c *KubeClient) ListPods(ns string) (*v1.PodList, error) {
+	pods, err := c.ClientSet.CoreV1().Pods(ns).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return pods, nil
 }
 
 func getkubeclient(config *rest.Config) (*kubernetes.Clientset, error) {
