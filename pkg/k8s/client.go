@@ -9,6 +9,7 @@ import (
 	"time"
 
 	aadpodid "github.com/Azure/aad-pod-identity/pkg/apis/aadpodidentity"
+	aadpodv1 "github.com/Azure/aad-pod-identity/pkg/apis/aadpodidentity/v1"
 	crd "github.com/Azure/aad-pod-identity/pkg/crd"
 	"github.com/Azure/aad-pod-identity/pkg/metrics"
 	"github.com/Azure/aad-pod-identity/version"
@@ -45,8 +46,8 @@ type Client interface {
 	GetSecret(secretRef *v1.SecretReference) (*v1.Secret, error)
 	// ListPodIdentityExceptions returns list of azurepodidentityexceptions
 	ListPodIdentityExceptions(namespace string) (*[]aadpodid.AzurePodIdentityException, error)
-	// ListPods returns list of pods in ns namespace
-	ListPods(ns string) (*v1.PodList, error)
+	// ListAssignedIDsFromAPIServer lists all azure assigned ids, not from cache
+	ListAssignedIDsFromAPIServer() (*aadpodv1.AzureAssignedIdentityList, error)
 }
 
 // KubeClient k8s client
@@ -249,6 +250,11 @@ func (c *KubeClient) ListPodIdentityExceptions(ns string) (*[]aadpodid.AzurePodI
 	return c.CrdClient.ListPodIdentityExceptions(ns)
 }
 
+// ListAssignedIDsFromAPIServer lists all azure assigned ids, not from cache
+func (c *KubeClient) ListAssignedIDsFromAPIServer() (*aadpodv1.AzureAssignedIdentityList, error) {
+	return c.CrdClient.ListAssignedIDsFromAPIServer()
+}
+
 // GetSecret returns secret the secretRef represents
 func (c *KubeClient) GetSecret(secretRef *v1.SecretReference) (*v1.Secret, error) {
 	start := time.Now()
@@ -268,15 +274,6 @@ func (c *KubeClient) GetSecret(secretRef *v1.SecretReference) (*v1.Secret, error
 		return nil, err
 	}
 	return secret, nil
-}
-
-// ListPods returns list of pods in ns namespace
-func (c *KubeClient) ListPods(ns string) (*v1.PodList, error) {
-	pods, err := c.ClientSet.CoreV1().Pods(ns).List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return pods, nil
 }
 
 func getkubeclient(config *rest.Config) (*kubernetes.Clientset, error) {

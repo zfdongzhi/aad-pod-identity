@@ -58,6 +58,7 @@ type ClientInt interface {
 	ListIds() (res *[]aadpodid.AzureIdentity, err error)
 	ListPodIds(podns, podname string) (map[string][]aadpodid.AzureIdentity, error)
 	ListPodIdentityExceptions(ns string) (res *[]aadpodid.AzurePodIdentityException, err error)
+	ListAssignedIDsFromAPIServer() (*aadpodv1.AzureAssignedIdentityList, error)
 }
 
 // NewCRDClientLite returns a new CRD lite client and error if any.
@@ -811,6 +812,20 @@ func (c *Client) UpdateAzureAssignedIdentityStatus(assignedIdentity *aadpodid.Az
 		Error()
 	klog.V(5).Infof("patch of %s took: %v", assignedIdentity.Name, time.Since(begin))
 	return err
+}
+
+// ListAssignedIDsFromAPIServer lists all azure assigned ids, not from cache
+func (c *Client) ListAssignedIDsFromAPIServer() (*aadpodv1.AzureAssignedIdentityList, error) {
+	klog.V(6).Infof("Get assigned IDs from API server")
+
+	var res aadpodv1.AzureAssignedIdentityList
+	err := c.rest.Get().Resource(aadpodid.AzureAssignedIDResource).Do(context.TODO()).Into(&res)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &res, nil
 }
 
 func getMapKey(ns, name string) string {

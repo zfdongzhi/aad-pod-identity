@@ -87,21 +87,21 @@ func initNMIWindowsHealthProbe(condition *bool, nodeName string, s *server.Serve
 			klog.Infof("Server response: %s", string(b))
 		}
 
-		klog.Info("Started to call api server by calling ListPods.")
+		klog.Info("Started to call api server by calling ListAssignedIDsFromAPIServer")
 
-		pods, err := s.KubeClient.ListPods("")
+		idList, err := s.KubeClient.ListAssignedIDsFromAPIServer()
 		if err != nil {
-			klog.Errorf("health probe call api server by calling ListPods failed with error: %+v", err)
+			klog.Errorf("health probe call api server by calling ListAssignedIDsFromAPIServer failed with error: %+v", err)
 			statusCode = 500
 		} else {
 			klog.Info("Call api server Successfully.")
 
-			var podNames []string
-			for _, podItem := range pods.Items {
-				podNames = append(podNames, podItem.ObjectMeta.Name)
+			var idListNames []string
+			for _, idItem := range idList.Items {
+				idListNames = append(idListNames, idItem.ObjectMeta.Name)
 			}
 
-			klog.Infof("API Server response: %v", podNames)
+			klog.Infof("API Server response: %v", idListNames)
 		}
 
 		w.WriteHeader(statusCode)

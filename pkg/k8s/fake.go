@@ -2,6 +2,7 @@ package k8s
 
 import (
 	aadpodid "github.com/Azure/aad-pod-identity/pkg/apis/aadpodidentity"
+	aadpodv1 "github.com/Azure/aad-pod-identity/pkg/apis/aadpodidentity/v1"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,7 +55,7 @@ func (c *FakeClient) Start(exit <-chan struct{}) {
 
 }
 
-// GetSecret returns secret the secretRef represents
-func (c *FakeClient) ListPods(ns string) (*v1.PodList, error) {
+// ListAssignedIDsFromAPIServer lists all azure assigned ids
+func (c *FakeClient) ListAssignedIDsFromAPIServer() (*aadpodv1.AzureAssignedIdentityList, error) {
 	return nil, nil
 }
