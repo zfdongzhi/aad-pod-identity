@@ -55,7 +55,7 @@ func (c *FakeClient) Start(exit <-chan struct{}) {
 
 }
 
-// ListAssignedIDsFromAPIServer lists all azure assigned ids
-func (c *FakeClient) ListAssignedIDsFromAPIServer() (*aadpodv1.AzureAssignedIdentityList, error) {
+// ListAzureIdentitiesFromAPIServer lists all azure identities
+func (c *FakeClient) ListAzureIdentitiesFromAPIServer() (*aadpodv1.AzureIdentityList, error) {
 	return nil, nil
 }

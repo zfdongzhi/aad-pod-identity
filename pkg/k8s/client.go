@@ -46,8 +46,8 @@ type Client interface {
 	GetSecret(secretRef *v1.SecretReference) (*v1.Secret, error)
 	// ListPodIdentityExceptions returns list of azurepodidentityexceptions
 	ListPodIdentityExceptions(namespace string) (*[]aadpodid.AzurePodIdentityException, error)
-	// ListAssignedIDsFromAPIServer lists all azure assigned ids, not from cache
-	ListAssignedIDsFromAPIServer() (*aadpodv1.AzureAssignedIdentityList, error)
+	// ListAzureIdentitiesFromAPIServer lists all azure identities, not from cache
+	ListAzureIdentitiesFromAPIServer() (*aadpodv1.AzureIdentityList, error)
 }
 
 // KubeClient k8s client
@@ -250,9 +250,9 @@ func (c *KubeClient) ListPodIdentityExceptions(ns string) (*[]aadpodid.AzurePodI
 	return c.CrdClient.ListPodIdentityExceptions(ns)
 }
 
-// ListAssignedIDsFromAPIServer lists all azure assigned ids, not from cache
-func (c *KubeClient) ListAssignedIDsFromAPIServer() (*aadpodv1.AzureAssignedIdentityList, error) {
-	return c.CrdClient.ListAssignedIDsFromAPIServer()
+// ListAzureIdentitiesFromAPIServer lists all azure identities, not from cache
+func (c *KubeClient) ListAzureIdentitiesFromAPIServer() (*aadpodv1.AzureIdentityList, error) {
+	return c.CrdClient.ListAzureIdentitiesFromAPIServer()
 }
 
 // GetSecret returns secret the secretRef represents

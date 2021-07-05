@@ -814,12 +814,12 @@ func (c *Client) UpdateAzureAssignedIdentityStatus(assignedIdentity *aadpodid.Az
 	return err
 }
 
-// ListAssignedIDsFromAPIServer lists all azure assigned ids, not from cache
-func (c *Client) ListAssignedIDsFromAPIServer() (*aadpodv1.AzureAssignedIdentityList, error) {
-	klog.V(6).Infof("Get assigned IDs from API server")
+// ListAzureIdentitiesFromAPIServer lists all azure identities, not from cache
+func (c *Client) ListAzureIdentitiesFromAPIServer() (*aadpodv1.AzureIdentityList, error) {
+	klog.V(6).Infof("Get azure identities from API server")
 
-	var res aadpodv1.AzureAssignedIdentityList
-	err := c.rest.Get().Resource(aadpodid.AzureAssignedIDResource).Do(context.TODO()).Into(&res)
+	var res aadpodv1.AzureIdentityList
+	err := c.rest.Get().Resource(aadpodid.AzureIDResource).Do(context.TODO()).Into(&res)
 
 	if err != nil {
 		return nil, err

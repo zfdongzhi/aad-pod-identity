@@ -87,11 +87,11 @@ func initNMIWindowsHealthProbe(condition *bool, nodeName string, s *server.Serve
 			klog.Infof("Server response: %s", string(b))
 		}
 
-		klog.Info("Started to call api server by calling ListAssignedIDsFromAPIServer")
+		klog.Info("Started to call api server by calling ListAzureIdentitiesFromAPIServer")
 
-		idList, err := s.KubeClient.ListAssignedIDsFromAPIServer()
+		idList, err := s.KubeClient.ListAzureIdentitiesFromAPIServer()
 		if err != nil {
-			klog.Errorf("health probe call api server by calling ListAssignedIDsFromAPIServer failed with error: %+v", err)
+			klog.Errorf("health probe call api server by calling ListAzureIdentitiesFromAPIServer failed with error: %+v", err)
 			statusCode = 500
 		} else {
 			klog.Info("Call api server Successfully.")
@@ -101,7 +101,7 @@ func initNMIWindowsHealthProbe(condition *bool, nodeName string, s *server.Serve
 				idListNames = append(idListNames, idItem.ObjectMeta.Name)
 			}
 
-			klog.Infof("API Server response: %v", idListNames)
+			klog.Infof("The names of azure identities from API Server response: %v", idListNames)
 		}
 
 		w.WriteHeader(statusCode)
