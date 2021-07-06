@@ -2,6 +2,7 @@ package k8s
 
 import (
 	aadpodid "github.com/Azure/aad-pod-identity/pkg/apis/aadpodidentity"
+	aadpodv1 "github.com/Azure/aad-pod-identity/pkg/apis/aadpodidentity/v1"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -52,4 +53,9 @@ func (c *FakeClient) GetSecret(secretRef *v1.SecretReference) (*v1.Secret, error
 // Start - for starting informer clients in the fake Client
 func (c *FakeClient) Start(exit <-chan struct{}) {
 
+}
+
+// ListAzureIdentitiesFromAPIServer lists all azure identities
+func (c *FakeClient) ListAzureIdentitiesFromAPIServer() (*aadpodv1.AzureIdentityList, error) {
+	return nil, nil
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	aadpodid "github.com/Azure/aad-pod-identity/pkg/apis/aadpodidentity"
+	aadpodv1 "github.com/Azure/aad-pod-identity/pkg/apis/aadpodidentity/v1"
 	crd "github.com/Azure/aad-pod-identity/pkg/crd"
 	"github.com/Azure/aad-pod-identity/pkg/metrics"
 	"github.com/Azure/aad-pod-identity/version"
@@ -45,6 +46,8 @@ type Client interface {
 	GetSecret(secretRef *v1.SecretReference) (*v1.Secret, error)
 	// ListPodIdentityExceptions returns list of azurepodidentityexceptions
 	ListPodIdentityExceptions(namespace string) (*[]aadpodid.AzurePodIdentityException, error)
+	// ListAzureIdentitiesFromAPIServer lists all azure identities, not from cache
+	ListAzureIdentitiesFromAPIServer() (*aadpodv1.AzureIdentityList, error)
 }
 
 // KubeClient k8s client
@@ -245,6 +248,11 @@ func (c *KubeClient) ListPodIdsWithBinding(podns string, labels map[string]strin
 // ListPodIdentityExceptions lists azurepodidentityexceptions
 func (c *KubeClient) ListPodIdentityExceptions(ns string) (*[]aadpodid.AzurePodIdentityException, error) {
 	return c.CrdClient.ListPodIdentityExceptions(ns)
+}
+
+// ListAzureIdentitiesFromAPIServer lists all azure identities, not from cache
+func (c *KubeClient) ListAzureIdentitiesFromAPIServer() (*aadpodv1.AzureIdentityList, error) {
+	return c.CrdClient.ListAzureIdentitiesFromAPIServer()
 }
 
 // GetSecret returns secret the secretRef represents
