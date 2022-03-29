@@ -112,7 +112,7 @@ func main() {
 		klog.Fatalf("failed to get kube client, error: %+v", err)
 	}
 
-	klog.Infof("Build kubeconfig (%s)", kubeconfig)
+	klog.Infof("Build kubeconfig (%v)", kubeconfig)
 	config, err := buildConfig(*kubeconfig)
 	if err != nil {
 		klog.Fatalf("Could not read config properly. Check the k8s config file, %+v", err)

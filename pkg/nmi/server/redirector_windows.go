@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 package server
@@ -55,21 +56,23 @@ func Sync(server *Server, subRoutineDone chan<- struct{}, mainRoutineDone <-chan
 			if pod.Status.PodIP != "" && server.NodeName == pod.Spec.NodeName && server.HostIP != pod.Status.PodIP {
 				if podIP, podExist := podMap[pod.UID]; podExist {
 					klog.Infof("Start to delete: Pod UID and Pod Name:%s %s", pod.UID, pod.Name)
-					err := DeleteEndpointRoutePolicy(podIP, server.MetadataIP)
+					err, t := DeleteEndpointRoutePolicy(podIP, server.MetadataIP)
 					uploadIPRoutePolicyMetrics(err, server, podIP)
 
 					if err != nil {
-						klog.Errorf("Failed to delete endpoint route policy: %w", err)
+						klog.Errorf("Failed to delete endpoint route policy: %s", err)
+						go PushBackFailureEventToChannel(t, server, pod)
 					} else {
 						delete(podMap, pod.UID)
 					}
 				} else {
 					klog.Infof("Start to add: Pod UID and Pod Name:%s %s", pod.UID, pod.Name)
-					err := ApplyEndpointRoutePolicy(pod.Status.PodIP, server.MetadataIP, server.MetadataPort, server.HostIP, server.NMIPort)
+					err, t := ApplyEndpointRoutePolicy(pod.Status.PodIP, server.MetadataIP, server.MetadataPort, server.HostIP, server.NMIPort)
 					uploadIPRoutePolicyMetrics(err, server, pod.Status.PodIP)
 
 					if err != nil {
-						klog.Errorf("Failed to apply endpoint route policy: %w", err)
+						klog.Errorf("Failed to apply endpoint route policy: %s", err)
+						go PushBackFailureEventToChannel(t, server, pod)
 					} else {
 						podMap[pod.UID] = pod.Status.PodIP
 					}
@@ -93,10 +96,11 @@ func ApplyRoutePolicyForExistingPods(server *Server) {
 	for _, podItem := range listPods {
 		if podItem.Spec.NodeName == server.NodeName && podItem.Status.PodIP != "" && podItem.Status.PodIP != server.HostIP {
 			klog.Infof("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
-			err := ApplyEndpointRoutePolicy(podItem.Status.PodIP, server.MetadataIP, server.MetadataPort, server.HostIP, server.NMIPort)
+			err, t := ApplyEndpointRoutePolicy(podItem.Status.PodIP, server.MetadataIP, server.MetadataPort, server.HostIP, server.NMIPort)
 			uploadIPRoutePolicyMetrics(err, server, podItem.Status.PodIP)
 			if err != nil {
 				klog.Errorf("Failed to apply endpoint route policy when applying route policy for all existing pods: %+v", err)
+				go PushBackFailureEventToChannel(t, server, podItem)
 			} else {
 				podMap[podItem.UID] = podItem.Status.PodIP
 			}
@@ -122,7 +126,7 @@ func DeleteRoutePolicyForExistingPods(server *Server) {
 	for _, podItem := range listPods {
 		if podItem.Spec.NodeName == server.NodeName {
 			klog.Infof("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
-			err := DeleteEndpointRoutePolicy(podItem.Status.PodIP, server.MetadataIP)
+			err, _ := DeleteEndpointRoutePolicy(podItem.Status.PodIP, server.MetadataIP)
 			uploadIPRoutePolicyMetrics(err, server, podItem.Status.PodIP)
 			if err != nil {
 				klog.Errorf("Failed to delete endpoint route policy when deleting route policy for all existing pods: %+v", err)
@@ -149,4 +153,13 @@ func uploadIPRoutePolicyMetrics(err error, server *Server, podIP string) {
 	}
 	server.Reporter.ReportIPRoutePolicyOperation(
 		podIP, server.NodeName, metrics.NMIHostPolicyApplyCountM.M(1))
+}
+
+func PushBackFailureEventToChannel(t string, server *Server, pod *v1.Pod) {
+	// Pushback the event to channel when error type is not NotFound, and wait for 2 mins.
+	if t != NotFound {
+		time.Sleep(2 * time.Minute)
+		klog.Infof("Pushback pod [%s] ip change event to channel, error type: [%s]", pod.Status.PodIP, t)
+		server.PodObjChannel <- pod
+	}
 }
