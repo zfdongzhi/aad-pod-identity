@@ -126,10 +126,11 @@ func DeleteRoutePolicyForExistingPods(server *Server) {
 	for _, podItem := range listPods {
 		if podItem.Spec.NodeName == server.NodeName {
 			klog.Infof("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
-			err, _ := DeleteEndpointRoutePolicy(podItem.Status.PodIP, server.MetadataIP)
+			err, t := DeleteEndpointRoutePolicy(podItem.Status.PodIP, server.MetadataIP)
 			uploadIPRoutePolicyMetrics(err, server, podItem.Status.PodIP)
 			if err != nil {
 				klog.Errorf("Failed to delete endpoint route policy when deleting route policy for all existing pods: %+v", err)
+				go PushBackFailureEventToChannel(t, server, podItem)
 			} else {
 				delete(podMap, podItem.UID)
 			}
