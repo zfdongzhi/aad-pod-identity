@@ -6,6 +6,7 @@ package server
 import (
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 )
 
 var podMap = make(map[types.UID]string)
+
+const HNSPipeServerErrorMsg = "hnspipe: The system cannot find the file specified"
 
 // WindowsRedirector returns sync function for windows redirector
 func WindowsRedirector(server *Server, subRoutineDone <-chan struct{}) func(*Server, chan<- struct{}, <-chan struct{}) {
@@ -61,7 +64,7 @@ func Sync(server *Server, subRoutineDone chan<- struct{}, mainRoutineDone <-chan
 
 					if err != nil {
 						klog.Errorf("Failed to delete endpoint route policy: %s", err)
-						go PushBackFailureEventToChannel(t, server, pod)
+						go pushBackFailureEventToChannel(err, t, server, pod)
 					} else {
 						delete(podMap, pod.UID)
 					}
@@ -72,7 +75,7 @@ func Sync(server *Server, subRoutineDone chan<- struct{}, mainRoutineDone <-chan
 
 					if err != nil {
 						klog.Errorf("Failed to apply endpoint route policy: %s", err)
-						go PushBackFailureEventToChannel(t, server, pod)
+						go pushBackFailureEventToChannel(err, t, server, pod)
 					} else {
 						podMap[pod.UID] = pod.Status.PodIP
 					}
@@ -100,7 +103,7 @@ func ApplyRoutePolicyForExistingPods(server *Server) {
 			uploadIPRoutePolicyMetrics(err, server, podItem.Status.PodIP)
 			if err != nil {
 				klog.Errorf("Failed to apply endpoint route policy when applying route policy for all existing pods: %+v", err)
-				go PushBackFailureEventToChannel(t, server, podItem)
+				go pushBackFailureEventToChannel(err, t, server, podItem)
 			} else {
 				podMap[podItem.UID] = podItem.Status.PodIP
 			}
@@ -130,7 +133,7 @@ func DeleteRoutePolicyForExistingPods(server *Server) {
 			uploadIPRoutePolicyMetrics(err, server, podItem.Status.PodIP)
 			if err != nil {
 				klog.Errorf("Failed to delete endpoint route policy when deleting route policy for all existing pods: %+v", err)
-				go PushBackFailureEventToChannel(t, server, podItem)
+				go pushBackFailureEventToChannel(err, t, server, podItem)
 			} else {
 				delete(podMap, podItem.UID)
 			}
@@ -156,9 +159,9 @@ func uploadIPRoutePolicyMetrics(err error, server *Server, podIP string) {
 		podIP, server.NodeName, metrics.NMIHostPolicyApplyCountM.M(1))
 }
 
-func PushBackFailureEventToChannel(t string, server *Server, pod *v1.Pod) {
+func pushBackFailureEventToChannel(err error, t string, server *Server, pod *v1.Pod) {
 	// Pushback the event to channel when error type is not NotFound, and wait for 2 mins.
-	if t != NotFound {
+	if t != NotFound && !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(HNSPipeServerErrorMsg)) {
 		time.Sleep(2 * time.Minute)
 		klog.Infof("Pushback pod [%s] ip change event to channel, error type: [%s]", pod.Status.PodIP, t)
 		server.PodObjChannel <- pod
