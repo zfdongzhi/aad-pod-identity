@@ -25,6 +25,7 @@ const (
 	nmiTokenOperationFailureCountName      = "nmi_token_operation_failure_count"
 	nmiHostPolicyApplyCountName            = "nmi_host_policy_apply_count"
 	nmiHostPolicyApplyFailedCountName      = "nmi_host_policy_apply_failed_count"
+	nmiHostPolicyMisMatchCountName         = "nmi_host_policy_mismatch_count"
 	micCycleDurationName                   = "mic_cycle_duration_seconds"
 	micCycleCountName                      = "mic_cycle_count"
 	micNewLeaderElectionCountName          = "mic_new_leader_election_count"
@@ -132,6 +133,12 @@ var (
 	NMIHostPolicyApplyFailedCountM = stats.Int64(
 		nmiHostPolicyApplyFailedCountName,
 		"Total number of failed host policy update from nmi",
+		stats.UnitDimensionless)
+
+	// NMIHostPolicyMisMatchCountM is a measure that tracks the count of applied routing policies mismatch with existing pods on the node.
+	NMIHostPolicyMisMatchCountM = stats.Int64(
+		nmiHostPolicyMisMatchCountName,
+		"Total number of applied routing policies mismatch with existing pods",
 		stats.UnitDimensionless)
 
 	// MICCycleDurationM is a measure that tracks the duration in seconds for single mic sync cycle.
@@ -268,6 +275,12 @@ func registerViews() error {
 		&view.View{
 			Description: NMIHostPolicyApplyFailedCountM.Description(),
 			Measure:     NMIHostPolicyApplyFailedCountM,
+			Aggregation: view.Count(),
+			TagKeys:     []tag.Key{workloadPodKey, hostNodeKey},
+		},
+		&view.View{
+			Description: NMIHostPolicyMisMatchCountM.Description(),
+			Measure:     NMIHostPolicyMisMatchCountM,
 			Aggregation: view.Count(),
 			TagKeys:     []tag.Key{workloadPodKey, hostNodeKey},
 		},

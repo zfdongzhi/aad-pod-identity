@@ -3,14 +3,20 @@ package probes
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	msg "github.com/Microsoft/hcnproxy/pkg/types"
 	"k8s.io/klog/v2"
 
+	"github.com/Azure/aad-pod-identity/pkg/metrics"
 	"github.com/Azure/aad-pod-identity/pkg/nmi/server"
 
 	hcnclient "github.com/Microsoft/hcnproxy/pkg/client"
+
+	v1 "github.com/Microsoft/hcsshim"
 )
+
+const IMDSEndpoint = "169.254.169.254"
 
 // InitHealthProbe - sets up a health probe which responds with success (200 - OK) once its initialized.
 // The contents of the healthz endpoint will be the string "Active" if the condition is satisfied.
@@ -87,6 +93,10 @@ func initNMIWindowsHealthProbe(condition *bool, nodeName string, s *server.Serve
 			klog.Infof("Server response: %s", string(b))
 		}
 
+		klog.Info("Started to compare applied route policies with all existing pods")
+
+		compareAppliedRoutePoliciesWithAllExistingPods(res.Response, s)
+
 		klog.Info("Started to call api server by calling ListAzureIdentitiesFromAPIServer")
 
 		idList, err := s.KubeClient.ListAzureIdentitiesFromAPIServer()
@@ -112,4 +122,52 @@ func initNMIWindowsHealthProbe(condition *bool, nodeName string, s *server.Serve
 			w.Write([]byte("Not Active"))
 		}
 	})
+}
+
+func compareAppliedRoutePoliciesWithAllExistingPods(response []byte, s *server.Server) {
+	var endpoints []v1.HNSEndpoint
+	err := json.Unmarshal(response, &endpoints)
+
+	if err != nil {
+		klog.Errorf("Unmarshal HNS response failed when comparing applied route policies with all existing pods: %+v", err)
+		return
+	}
+
+	policiesMap := make(map[string][]json.RawMessage)
+
+	for _, ep := range endpoints {
+		policiesMap[ep.IPAddress.String()] = ep.Policies
+	}
+
+	listPods, err := s.PodClient.ListPods()
+	if err != nil {
+		klog.Errorf("Failed to list pods when comparing applied route policies with all existing pods: %+v", err)
+		return
+	}
+
+	for _, podItem := range listPods {
+		if podItem.Spec.NodeName == s.NodeName && podItem.Status.PodIP != "" && podItem.Status.PodIP != s.HostIP {
+			klog.Infof("Get Host IP, Node Name and Pod IP: \n %s %s %s \n", podItem.Status.HostIP, podItem.Spec.NodeName, podItem.Status.PodIP)
+
+			policies, ok := policiesMap[podItem.Status.PodIP]
+
+			if ok {
+				found := false
+
+				for _, policy := range policies {
+					if strings.Contains(string(policy), IMDSEndpoint) {
+						found = true
+						break
+					}
+				}
+
+				if !found {
+					s.Reporter.ReportIPRoutePolicyOperation(
+						podItem.Status.PodIP, s.NodeName, metrics.NMIHostPolicyMisMatchCountM.M(1))
+				}
+			} else {
+				klog.Errorf("Cannot find pod ip %s in applied route policies", podItem.Status.PodIP)
+			}
+		}
+	}
 }
