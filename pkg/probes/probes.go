@@ -156,6 +156,7 @@ func compareAppliedRoutePoliciesWithAllExistingPods(response []byte, s *server.S
 
 				for _, policy := range policies {
 					if strings.Contains(string(policy), IMDSEndpoint) {
+						klog.Infof("Found IMDS endpoint in policies")
 						found = true
 						break
 					}
