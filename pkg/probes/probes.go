@@ -163,6 +163,8 @@ func compareAppliedRoutePoliciesWithAllExistingPods(response []byte, s *server.S
 				}
 
 				if !found {
+					klog.Warningf("CANNOT find IMDS endpoint in policies!")
+
 					s.Reporter.ReportIPRoutePolicyOperation(
 						podItem.Status.PodIP, s.NodeName, metrics.NMIHostPolicyMisMatchCountM.M(1))
 				}
