@@ -106,11 +106,11 @@ func (c *TestVMClient) UpdateIdentities(rg, nodeName string, vm compute.VirtualM
 	return nil
 }
 
-func (c *TestVMClient) ListMSI() (ret map[string]*[]string) {
+func (c *TestVMClient) ListMSI() map[string]*[]string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	ret = make(map[string]*[]string)
+	ret := make(map[string]*[]string)
 
 	for key, val := range c.nodeMap {
 		var ids []string
@@ -220,8 +220,8 @@ func (c *TestVMSSClient) UpdateIdentities(rg, nodeName string, vmss compute.Virt
 	return nil
 }
 
-func (c *TestVMSSClient) ListMSI() (ret map[string]*[]string) {
-	ret = make(map[string]*[]string)
+func (c *TestVMSSClient) ListMSI() map[string]*[]string {
+	ret := make(map[string]*[]string)
 
 	for key, val := range c.nodeMap {
 		var ids []string
@@ -282,7 +282,7 @@ func (c *TestCloudClient) GetUserMSIs(name string, isvmss bool) ([]string, error
 	return ret, nil
 }
 
-func (c *TestCloudClient) ListMSI() (ret map[string]*[]string) {
+func (c *TestCloudClient) ListMSI() map[string]*[]string {
 	if c.Client.Config.VMType == "vmss" {
 		return c.testVMSSClient.ListMSI()
 	}
@@ -395,16 +395,6 @@ func (c *TestPodClient) GetPods() ([]*corev1.Pod, error) {
 	return pods, nil
 }
 
-func (c *TestPodClient) ListPods() ([]*corev1.Pod, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	pods := make([]*corev1.Pod, len(c.pods))
-	copy(pods, c.pods)
-
-	return pods, nil
-}
-
 func (c *TestPodClient) AddPod(podName, podNs, nodeName, binding string) {
 	labels := make(map[string]string)
 	labels[aadpodid.CRDLabelKey] = binding
@@ -424,7 +414,7 @@ func (c *TestPodClient) AddPod(podName, podNs, nodeName, binding string) {
 	c.pods = append(c.pods, pod)
 }
 
-func (c *TestPodClient) DeletePod(podName string, podNs string) {
+func (c *TestPodClient) DeletePod(podName, podNs string) {
 	var newPods []*corev1.Pod
 	changed := false
 
@@ -474,7 +464,7 @@ func (c *TestCrdClient) SyncCacheAll(exit <-chan struct{}, initial bool) {
 
 }
 
-func (c *TestCrdClient) CreateCrdWatchers(eventCh chan internalaadpodid.EventType) (err error) {
+func (c *TestCrdClient) CreateCrdWatchers(eventCh chan internalaadpodid.EventType) error {
 	return nil
 }
 
@@ -554,7 +544,7 @@ func (c *TestCrdClient) CreateID(idName, ns string, t aadpodid.IdentityType, rID
 	c.mu.Unlock()
 }
 
-func (c *TestCrdClient) ListIds() (res *[]internalaadpodid.AzureIdentity, err error) {
+func (c *TestCrdClient) ListIds() (*[]internalaadpodid.AzureIdentity, error) {
 	idList := make([]internalaadpodid.AzureIdentity, 0)
 	c.mu.Lock()
 	for _, v := range c.idMap {
@@ -565,7 +555,7 @@ func (c *TestCrdClient) ListIds() (res *[]internalaadpodid.AzureIdentity, err er
 	return &idList, nil
 }
 
-func (c *TestCrdClient) ListBindings() (res *[]internalaadpodid.AzureIdentityBinding, err error) {
+func (c *TestCrdClient) ListBindings() (*[]internalaadpodid.AzureIdentityBinding, error) {
 	bindingList := make([]internalaadpodid.AzureIdentityBinding, 0)
 	c.mu.Lock()
 	for _, v := range c.bindingMap {
@@ -576,7 +566,7 @@ func (c *TestCrdClient) ListBindings() (res *[]internalaadpodid.AzureIdentityBin
 	return &bindingList, nil
 }
 
-func (c *TestCrdClient) ListAssignedIDs() (res *[]internalaadpodid.AzureAssignedIdentity, err error) {
+func (c *TestCrdClient) ListAssignedIDs() (*[]internalaadpodid.AzureAssignedIdentity, error) {
 	assignedIDList := make([]internalaadpodid.AzureAssignedIdentity, 0)
 	c.mu.Lock()
 	for _, v := range c.assignedIDMap {
@@ -586,7 +576,7 @@ func (c *TestCrdClient) ListAssignedIDs() (res *[]internalaadpodid.AzureAssigned
 	return &assignedIDList, nil
 }
 
-func (c *TestCrdClient) ListAssignedIDsInMap() (res map[string]internalaadpodid.AzureAssignedIdentity, err error) {
+func (c *TestCrdClient) ListAssignedIDsInMap() (map[string]internalaadpodid.AzureAssignedIdentity, error) {
 	assignedIDMap := make(map[string]internalaadpodid.AzureAssignedIdentity)
 	c.mu.Lock()
 	for k, v := range c.assignedIDMap {
@@ -1040,6 +1030,34 @@ func TestUpdateAssignedIdentities(t *testing.T) {
 				assignedID.Spec.AzureIdentityRef.ResourceVersion == "changedrv2" && assignedID.Spec.AzureIdentityRef.Spec.ClientID == "test-user-msi-clientid" &&
 				assignedID.Spec.AzureIdentityRef.Spec.ResourceID == newResourceID) {
 				t.Fatalf("assigned ID spec: %v mismatch", assignedID)
+			}
+		}
+	}
+
+	// test pod with same name moving to a new node
+	// the nodename label should be updated to test-node2
+	nodeClient.AddNode("test-node2")
+	podClient.DeletePod("test-pod", "default")
+	podClient.AddPod("test-pod", "default", "test-node2", "test-select")
+
+	eventCh <- internalaadpodid.PodUpdated
+
+	evtRecorder.WaitForEvents(1)
+	if !crdClient.waitForAssignedIDs(2) {
+		t.Fatalf("expected len of assigned identities to be 2")
+	}
+	listAssignedIDs, err = crdClient.ListAssignedIDs()
+	if err != nil {
+		t.Fatalf("list assigned ids failed , error: %+v", err)
+	}
+	// check updated assigned identity has the right resource id
+	if listAssignedIDs != nil {
+		for _, assignedID := range *listAssignedIDs {
+			if assignedID.Name != "test-pod-default-test-id" {
+				continue
+			}
+			if assignedID.ObjectMeta.Labels["nodename"] != "test-node2" {
+				t.Fatalf("expected node name: test-node2, got: %s", assignedID.ObjectMeta.Labels["nodename"])
 			}
 		}
 	}
@@ -1628,7 +1646,7 @@ func TestSyncExit(t *testing.T) {
 	micClient.testRunSync()(t)
 }
 
-func TestMicAddDelVMSSwithImmutableIdentities(t *testing.T) {
+func TestMicAddDelVMSSWithImmutableIdentities(t *testing.T) {
 	eventCh := make(chan internalaadpodid.EventType, 100)
 	cloudClient := NewTestCloudClient(config.AzureConfig{VMType: "vmss"})
 	crdClient := NewTestCrdClient(nil)

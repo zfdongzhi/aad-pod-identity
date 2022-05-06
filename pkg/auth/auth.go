@@ -10,7 +10,6 @@ import (
 	"github.com/Azure/aad-pod-identity/version"
 
 	"github.com/Azure/go-autorest/autorest/adal"
-
 	"golang.org/x/crypto/pkcs12"
 	"k8s.io/klog/v2"
 )
@@ -22,32 +21,25 @@ const (
 var reporter *metrics.Reporter
 
 // GetServicePrincipalTokenFromMSI return the token for the assigned user
-func GetServicePrincipalTokenFromMSI(resource string) (*adal.Token, error) {
+func GetServicePrincipalTokenFromMSI(resource string) (_ *adal.Token, err error) {
 	begin := time.Now()
-	var err error
-
 	defer func() {
 		if err != nil {
-			err = reporter.ReportIMDSOperationError(metrics.AdalTokenFromMSIOperationName)
-			if err != nil {
-				klog.Warningf("failed to report metrics, error: %+v", err)
+			merr := reporter.ReportIMDSOperationError(metrics.AdalTokenFromMSIOperationName)
+			if merr != nil {
+				klog.Warningf("failed to report metrics, error: %+v", merr)
 			}
 			return
 		}
-		err = reporter.ReportIMDSOperationDuration(metrics.AdalTokenFromMSIOperationName, time.Since(begin))
-		if err != nil {
-			klog.Warningf("failed to report metrics, error: %+v", err)
+		merr := reporter.ReportIMDSOperationDuration(metrics.AdalTokenFromMSIOperationName, time.Since(begin))
+		if merr != nil {
+			klog.Warningf("failed to report metrics, error: %+v", merr)
 		}
 	}()
 
-	msiEndpoint, err := adal.GetMSIVMEndpoint()
+	spt, err := adal.NewServicePrincipalTokenFromManagedIdentity(resource, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get the MSI endpoint, error: %+v", err)
-	}
-	// Set up the configuration of the service principal
-	spt, err := adal.NewServicePrincipalTokenFromMSI(msiEndpoint, resource)
-	if err != nil {
-		return nil, fmt.Errorf("failed to acquire a token for MSI, error: %+v", err)
+		return nil, err
 	}
 	// obtain a fresh token
 	err = spt.Refresh()
@@ -59,34 +51,26 @@ func GetServicePrincipalTokenFromMSI(resource string) (*adal.Token, error) {
 }
 
 // GetServicePrincipalTokenFromMSIWithUserAssignedID return the token for the assigned user
-func GetServicePrincipalTokenFromMSIWithUserAssignedID(clientID, resource string) (*adal.Token, error) {
+func GetServicePrincipalTokenFromMSIWithUserAssignedID(clientID, resource string) (_ *adal.Token, err error) {
 	begin := time.Now()
-	var err error
-
 	defer func() {
 		if err != nil {
-			err = reporter.ReportIMDSOperationError(metrics.AdalTokenFromMSIWithUserAssignedIDOperationName)
-			if err != nil {
-				klog.Warningf("failed to report metrics, error: %+v", err)
+			merr := reporter.ReportIMDSOperationError(metrics.AdalTokenFromMSIWithUserAssignedIDOperationName)
+			if merr != nil {
+				klog.Warningf("failed to report metrics, error: %+v", merr)
 			}
 			return
 		}
-		err = reporter.ReportIMDSOperationDuration(metrics.AdalTokenFromMSIWithUserAssignedIDOperationName, time.Since(begin))
-		if err != nil {
-			klog.Warningf("failed to report metrics, error: %+v", err)
+		merr := reporter.ReportIMDSOperationDuration(metrics.AdalTokenFromMSIWithUserAssignedIDOperationName, time.Since(begin))
+		if merr != nil {
+			klog.Warningf("failed to report metrics, error: %+v", merr)
 		}
 	}()
 
-	msiEndpoint, err := adal.GetMSIVMEndpoint()
+	managedIdentityOptions := &adal.ManagedIdentityOptions{ClientID: clientID}
+	spt, err := adal.NewServicePrincipalTokenFromManagedIdentity(resource, managedIdentityOptions)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get the MSI endpoint, error: %+v", err)
-	}
-	// The ID of the user for whom the token is requested
-	userAssignedID := clientID
-	// Set up the configuration of the service principal
-	spt, err := adal.NewServicePrincipalTokenFromMSIWithUserAssignedID(msiEndpoint, resource, userAssignedID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to acquire a token using the MSI VM extension, error: %+v", err)
+		return nil, err
 	}
 
 	// obtain a fresh token
@@ -99,21 +83,19 @@ func GetServicePrincipalTokenFromMSIWithUserAssignedID(clientID, resource string
 }
 
 // GetServicePrincipalToken return the token for the assigned user with client secret
-func GetServicePrincipalToken(adEndpointFromSpec, tenantID, clientID, secret, resource string, auxiliaryTenantIDs []string) ([]*adal.Token, error) {
+func GetServicePrincipalToken(adEndpointFromSpec, tenantID, clientID, secret, resource string, auxiliaryTenantIDs []string) (_ []*adal.Token, err error) {
 	begin := time.Now()
-	var err error
-
 	defer func() {
 		if err != nil {
-			err = reporter.ReportIMDSOperationError(metrics.AdalTokenOperationName)
-			if err != nil {
-				klog.Warningf("failed to report metrics, error: %+v", err)
+			merr := reporter.ReportIMDSOperationError(metrics.AdalTokenOperationName)
+			if merr != nil {
+				klog.Warningf("failed to report metrics, error: %+v", merr)
 			}
 			return
 		}
-		err = reporter.ReportIMDSOperationDuration(metrics.AdalTokenOperationName, time.Since(begin))
-		if err != nil {
-			klog.Warningf("failed to report metrics, error: %+v", err)
+		merr := reporter.ReportIMDSOperationDuration(metrics.AdalTokenOperationName, time.Since(begin))
+		if merr != nil {
+			klog.Warningf("failed to report metrics, error: %+v", merr)
 		}
 	}()
 
@@ -133,7 +115,7 @@ func GetServicePrincipalToken(adEndpointFromSpec, tenantID, clientID, secret, re
 func newServicePrincipalToken(activeDirectoryEndpoint, tenantID, clientID, secret, resource string) ([]*adal.Token, error) {
 	oauthConfig, err := adal.NewOAuthConfig(activeDirectoryEndpoint, tenantID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create OAuth config, error: %+v", err)
+		return nil, err
 	}
 	spt, err := adal.NewServicePrincipalToken(*oauthConfig, clientID, secret, resource)
 	if err != nil {
@@ -179,21 +161,19 @@ func newMultiTenantServicePrincipalToken(activeDirectoryEndpoint, primaryTenantI
 }
 
 // GetServicePrincipalTokenWithCertificate return the token for the assigned user with certificate
-func GetServicePrincipalTokenWithCertificate(adEndpointFromSpec, tenantID, clientID string, certificate []byte, password, resource string) (*adal.Token, error) {
+func GetServicePrincipalTokenWithCertificate(adEndpointFromSpec, tenantID, clientID string, certificate []byte, password, resource string) (_ *adal.Token, err error) {
 	begin := time.Now()
-	var err error
-
 	defer func() {
 		if err != nil {
-			err = reporter.ReportIMDSOperationError(metrics.AdalTokenOperationName)
-			if err != nil {
-				klog.Warningf("failed to report metrics, error: %+v", err)
+			merr := reporter.ReportIMDSOperationError(metrics.AdalTokenOperationName)
+			if merr != nil {
+				klog.Warningf("failed to report metrics, error: %+v", merr)
 			}
 			return
 		}
-		err = reporter.ReportIMDSOperationDuration(metrics.AdalTokenOperationName, time.Since(begin))
-		if err != nil {
-			klog.Warningf("failed to report metrics, error: %+v", err)
+		merr := reporter.ReportIMDSOperationDuration(metrics.AdalTokenOperationName, time.Since(begin))
+		if merr != nil {
+			klog.Warningf("failed to report metrics, error: %+v", merr)
 		}
 	}()
 
@@ -203,12 +183,12 @@ func GetServicePrincipalTokenWithCertificate(adEndpointFromSpec, tenantID, clien
 	}
 	oauthConfig, err := adal.NewOAuthConfig(activeDirectoryEndpoint, tenantID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create OAuth config, error: %+v", err)
+		return nil, err
 	}
 
 	privateKey, cert, err := pkcs12.Decode(certificate, password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode certificate, error: %+v", err)
+		return nil, err
 	}
 
 	spt, err := adal.NewServicePrincipalTokenFromCertificate(*oauthConfig, clientID, cert, privateKey.(*rsa.PrivateKey), resource)
@@ -218,7 +198,7 @@ func GetServicePrincipalTokenWithCertificate(adEndpointFromSpec, tenantID, clien
 	// obtain a fresh token
 	err = spt.Refresh()
 	if err != nil {
-		return nil, fmt.Errorf("failed to refresh token, error: %+v", err)
+		return nil, err
 	}
 	token := spt.Token()
 	return &token, nil

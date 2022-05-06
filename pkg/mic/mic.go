@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -76,7 +77,7 @@ type UpdateUserMSIConfig struct {
 }
 
 // Client has the required pointers to talk to the api server
-// and interact with the CRD related datastructure.
+// and interact with the CRD related data structure.
 type Client struct {
 	CRDClient                           crd.ClientInt
 	CloudClient                         cloudprovider.ClientInt
@@ -88,12 +89,11 @@ type Client struct {
 	IsNamespaced                        bool
 	SyncLoopStarted                     bool
 	syncRetryInterval                   time.Duration
-	enableScaleFeatures                 bool
 	createDeleteBatch                   int64
 	ImmutableUserMSIsMap                map[string]bool
 	identityAssignmentReconcileInterval time.Duration
 
-	syncing int32 // protect against conucrrent sync's
+	syncing int32 // protect against concurrent sync's
 
 	leaderElector *leaderelection.LeaderElector
 	*LeaderElectionConfig
@@ -110,7 +110,6 @@ type Config struct {
 	IsNamespaced                        bool
 	SyncRetryInterval                   time.Duration
 	LeaderElectionCfg                   *LeaderElectionConfig
-	EnableScaleFeatures                 bool
 	CreateDeleteBatch                   int64
 	ImmutableUserMSIsList               []string
 	CMcfg                               *CMConfig
@@ -134,7 +133,7 @@ type trackUserAssignedMSIIds struct {
 	isvmss                   bool
 }
 
-// NewMICClient returnes new mic client
+// NewMICClient returns new mic client
 func NewMICClient(cfg *Config) (*Client, error) {
 	klog.Infof("starting to create the pod identity client. Version: %v. Build date: %v", version.MICVersion, version.BuildDate)
 
@@ -187,16 +186,20 @@ func NewMICClient(cfg *Config) (*Client, error) {
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: clientSet.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: aadpodid.CRDGroup})
 
-	var immutableUserMSIsMap map[string]bool
-
+	immutableUserMSIsMap := make(map[string]bool)
 	if len(cfg.ImmutableUserMSIsList) > 0 {
-		// this map contains list of identities that are configured by user as immutable.
-		immutableUserMSIsMap = make(map[string]bool)
 		for _, item := range cfg.ImmutableUserMSIsList {
 			immutableUserMSIsMap[strings.ToLower(item)] = true
 		}
 	}
-
+	// Cluster identity used for cloud provider operations is also immutable.
+	// For clusters created with managed identity, the cluster identity is used for all
+	// cloud provider operations and is also used by MIC. If the user configures the cluster
+	// identity to be used by pod, we should not delete it when all pods are deleted.
+	clusterIdentity := cloudClient.GetClusterIdentity()
+	if clusterIdentity != "" {
+		immutableUserMSIsMap[clusterIdentity] = true
+	}
 	var cmClient typedcorev1.ConfigMapInterface
 	if cfg.TypeUpgradeCfg.EnableTypeUpgrade {
 		cmClient = clientSet.CoreV1().ConfigMaps(cfg.CMcfg.Namespace)
@@ -212,7 +215,6 @@ func NewMICClient(cfg *Config) (*Client, error) {
 		NodeClient:                          &NodeClient{informer.Core().V1().Nodes()},
 		IsNamespaced:                        cfg.IsNamespaced,
 		syncRetryInterval:                   cfg.SyncRetryInterval,
-		enableScaleFeatures:                 cfg.EnableScaleFeatures,
 		createDeleteBatch:                   cfg.CreateDeleteBatch,
 		ImmutableUserMSIsMap:                immutableUserMSIsMap,
 		TypeUpgradeCfg:                      cfg.TypeUpgradeCfg,
@@ -244,7 +246,7 @@ func (c *Client) Run() {
 }
 
 // NewLeaderElector - does the required leader election initialization
-func (c *Client) NewLeaderElector(clientSet *kubernetes.Clientset, recorder record.EventRecorder, leaderElectionConfig *LeaderElectionConfig) (leaderElector *leaderelection.LeaderElector, err error) {
+func (c *Client) NewLeaderElector(clientSet *kubernetes.Clientset, recorder record.EventRecorder, leaderElectionConfig *LeaderElectionConfig) (*leaderelection.LeaderElector, error) {
 	c.LeaderElectionConfig = leaderElectionConfig
 	resourceLock, err := resourcelock.New(resourcelock.EndpointsResourceLock,
 		c.Namespace,
@@ -274,7 +276,7 @@ func (c *Client) NewLeaderElector(clientSet *kubernetes.Clientset, recorder reco
 		Lock: resourceLock,
 	}
 
-	leaderElector, err = leaderelection.NewLeaderElector(config)
+	leaderElector, err := leaderelection.NewLeaderElector(config)
 	if err != nil {
 		return nil, err
 	}
@@ -607,6 +609,10 @@ func (c *Client) createDesiredAssignedIdentityList(
 			continue
 		}
 
+		// sort all matching bindings so we can iterate the slice
+		// in an deterministic fashion in different sync cycles
+		sort.Sort(aadpodid.AzureIdentityBindings(matchedBindings))
+
 		for _, binding := range matchedBindings {
 			klog.V(5).Infof("looking up id map: %s/%s", binding.Namespace, binding.Spec.AzureIdentity)
 			if azureID, idPresent := idMap[getIDKey(binding.Namespace, binding.Spec.AzureIdentity)]; idPresent {
@@ -626,7 +632,14 @@ func (c *Client) createDesiredAssignedIdentityList(
 					klog.Errorf("failed to create an AzureAssignedIdentity between pod %s/%s and AzureIdentity %s/%s, error: %+v", pod.Namespace, pod.Name, azureID.Namespace, azureID.Name, err)
 					continue
 				}
-				newAssignedIDs[assignedID.Name] = *assignedID
+
+				if a, ok := newAssignedIDs[assignedID.Name]; ok {
+					// see https://github.com/Azure/aad-pod-identity/issues/1065
+					klog.Warningf("AzureIdentity %s exists in both %s and %s namespace. Considering renaming it or enabling Namespace mode (https://azure.github.io/aad-pod-identity/docs/configure/match_pods_in_namespace)",
+						azureID.Name, a.Spec.AzureIdentityRef.Namespace, azureID.Namespace)
+				} else {
+					newAssignedIDs[assignedID.Name] = *assignedID
+				}
 			} else {
 				// This is the case where the identity has been deleted.
 				// In such a case, we will skip it from matching binding.
@@ -720,7 +733,7 @@ func (c *Client) shouldRemoveID(assignedID aadpodid.AzureAssignedIdentity,
 	return nil
 }
 
-func (c *Client) matchAssignedID(x aadpodid.AzureAssignedIdentity, y aadpodid.AzureAssignedIdentity) (ret bool) {
+func (c *Client) matchAssignedID(x aadpodid.AzureAssignedIdentity, y aadpodid.AzureAssignedIdentity) bool {
 	bindingX := x.Spec.AzureBindingRef
 	bindingY := y.Spec.AzureBindingRef
 
@@ -821,9 +834,13 @@ func (c *Client) getAzureAssignedIdentitiesToUpdate(add, del map[string]aadpodid
 	}
 	for assignedIDName, addAssignedID := range add {
 		if delAssignedID, exists := del[assignedIDName]; exists {
+			objMeta := delAssignedID.ObjectMeta
+			// the label should always be the latest as the pod could have moved to a different node
+			// with the same assigned identity
+			objMeta.SetLabels(addAssignedID.GetObjectMeta().GetLabels())
+			addAssignedID.ObjectMeta = objMeta
 			// assigned identity exists in add and del list
 			// update the assigned identity to the latest
-			addAssignedID.ObjectMeta = delAssignedID.ObjectMeta
 			beforeUpdate[assignedIDName] = delAssignedID
 			afterUpdate[assignedIDName] = addAssignedID
 			// since this is part of update, remove the assignedID from the add and del list
@@ -834,7 +851,7 @@ func (c *Client) getAzureAssignedIdentitiesToUpdate(add, del map[string]aadpodid
 	return beforeUpdate, afterUpdate
 }
 
-func (c *Client) makeAssignedIDs(azID aadpodid.AzureIdentity, azBinding aadpodid.AzureIdentityBinding, podName, podNameSpace, nodeName string) (res *aadpodid.AzureAssignedIdentity, err error) {
+func (c *Client) makeAssignedIDs(azID aadpodid.AzureIdentity, azBinding aadpodid.AzureIdentityBinding, podName, podNameSpace, nodeName string) (*aadpodid.AzureAssignedIdentity, error) {
 	binding := azBinding
 	id := azID
 
@@ -936,8 +953,8 @@ func getIDKey(ns, name string) string {
 	return strings.Join([]string{ns, name}, "/")
 }
 
-func (c *Client) convertIDListToMap(azureIdentities []aadpodid.AzureIdentity) (m map[string]aadpodid.AzureIdentity, err error) {
-	m = make(map[string]aadpodid.AzureIdentity, len(azureIdentities))
+func (c *Client) convertIDListToMap(azureIdentities []aadpodid.AzureIdentity) (map[string]aadpodid.AzureIdentity, error) {
+	m := make(map[string]aadpodid.AzureIdentity, len(azureIdentities))
 	for _, azureIdentity := range azureIdentities {
 		// validate the resourceID in azure identity for type 0 (UserAssignedMSI) to ensure format is as expected
 		if c.checkIfUserAssignedMSI(azureIdentity) {
@@ -1339,7 +1356,7 @@ func (c *Client) checkIfIdentityImmutable(id string) bool {
 
 // generateIdentityAssignmentState generates the current and desired state of each node's identity
 // assignments based on an existing list of AzureAssignedIdentity as the source of truth.
-func (c *Client) generateIdentityAssignmentState() (currentState map[string]map[string]bool, desiredState map[string]map[string]bool, isVMSSMap map[string]bool, err error) {
+func (c *Client) generateIdentityAssignmentState() (map[string]map[string]bool, map[string]map[string]bool, map[string]bool, error) {
 	type nodeMetadata struct {
 		nodeName string
 		isVMSS   bool
@@ -1351,9 +1368,9 @@ func (c *Client) generateIdentityAssignmentState() (currentState map[string]map[
 	}
 
 	nodeMetadataCache := make(map[string]nodeMetadata)
-	isVMSSMap = make(map[string]bool)
-	currentState = make(map[string]map[string]bool)
-	desiredState = make(map[string]map[string]bool)
+	isVMSSMap := make(map[string]bool)
+	currentState := make(map[string]map[string]bool)
+	desiredState := make(map[string]map[string]bool)
 	for _, assignedID := range *assignedIDs {
 		if _, ok := nodeMetadataCache[assignedID.Spec.NodeName]; !ok {
 			node, err := c.NodeClient.Get(assignedID.Spec.NodeName)

@@ -47,14 +47,15 @@ var (
 	retryAttemptsForAssigned           = pflag.Int("retry-attempts-for-assigned", defaultlistPodIDsRetryAttemptsForAssigned, "Number of retries in NMI to find assigned identity in ASSIGNED state")
 	findIdentityRetryIntervalInSeconds = pflag.Int("find-identity-retry-interval", defaultlistPodIDsRetryIntervalInSeconds, "Retry interval to find assigned identities in seconds")
 	enableProfile                      = pflag.Bool("enableProfile", false, "Enable/Disable pprof profiling")
-	enableScaleFeatures                = pflag.Bool("enableScaleFeatures", false, "Enable/Disable features for scale clusters")
+	enableScaleFeatures                = pflag.Bool("enableScaleFeatures", true, "Enable/Disable features for scale clusters")
 	blockInstanceMetadata              = pflag.Bool("block-instance-metadata", false, "Block instance metadata endpoints")
-	metadataHeaderRequired             = pflag.Bool("metadata-header-required", false, "Metadata header required for querying Azure Instance Metadata service")
+	metadataHeaderRequired             = pflag.Bool("metadata-header-required", true, "Metadata header required for querying Azure Instance Metadata service")
 	prometheusPort                     = pflag.String("prometheus-port", "9090", "Prometheus port for metrics")
 	operationMode                      = pflag.String("operation-mode", "standard", "NMI operation mode")
 	kubeconfig                         = pflag.String("kubeconfig", "", "Path to the kube config")
 	allowNetworkPluginKubenet          = pflag.Bool("allow-network-plugin-kubenet", false, "Allow running aad-pod-identity in cluster with kubenet")
 	kubeletConfig                      = pflag.String("kubelet-config", "/etc/default/kubelet", "Path to kubelet default config")
+	setRetryAfterHeader                = pflag.Bool("set-retry-after-header", false, "Set Retry-After header in NMI responses")
 )
 
 // Delay nmi startup due to DNS not being available during first seconds of nmi process execution.
@@ -123,7 +124,7 @@ func main() {
 	*forceNamespaced = *forceNamespaced || "true" == os.Getenv("FORCENAMESPACED")
 	klog.Infof("running NMI in namespaced mode: %v", *forceNamespaced)
 
-	s := server.NewServer(*micNamespace, *blockInstanceMetadata, *metadataHeaderRequired, config)
+	s := server.NewServer(*micNamespace, *blockInstanceMetadata, *metadataHeaderRequired, config, *setRetryAfterHeader)
 	s.KubeClient = client
 	s.MetadataIP = *metadataIP
 	s.MetadataPort = *metadataPort

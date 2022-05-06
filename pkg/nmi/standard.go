@@ -146,8 +146,8 @@ func (sc *StandardClient) listPodIDsWithRetry(ctx context.Context, podns, podnam
 					}
 				}
 				if !foundMatch && attempt >= sc.ListPodIDsRetryAttemptsForCreated {
-					return nil, false, fmt.Errorf("getting assigned identities for pod %s/%s in CREATED state failed after %d attempts, retry duration [%d]s, error: %+v. Check MIC pod logs for identity assignment errors",
-						podns, podname, sc.ListPodIDsRetryAttemptsForCreated, sc.ListPodIDsRetryIntervalInSeconds, err)
+					return nil, false, fmt.Errorf("clientID in request: %s, getting assigned identities for pod %s/%s in CREATED state failed after %d attempts, retry duration [%d]s, error: %+v. Check MIC pod logs for identity assignment errors",
+						utils.RedactClientID(rqClientID), podns, podname, sc.ListPodIDsRetryAttemptsForCreated, sc.ListPodIDsRetryIntervalInSeconds, err)
 				}
 			}
 		}
@@ -166,7 +166,7 @@ func (sc *StandardClient) listPodIDsWithRetry(ctx context.Context, podns, podnam
 }
 
 // GetTokens returns ADAL tokens based on the request and its pod identity.
-func (sc *StandardClient) GetTokens(ctx context.Context, rqClientID, rqResource string, azureID aadpodid.AzureIdentity) (tokens []*adal.Token, err error) {
+func (sc *StandardClient) GetTokens(ctx context.Context, rqClientID, rqResource string, azureID aadpodid.AzureIdentity) ([]*adal.Token, error) {
 	rqHasClientID := len(rqClientID) != 0
 	clientID := azureID.Spec.ClientID
 

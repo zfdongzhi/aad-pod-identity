@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 
@@ -16,22 +16,28 @@ import (
 
 	"time"
 
-	aadpodid "github.com/Azure/aad-pod-identity/pkg/apis/aadpodidentity"
-	auth "github.com/Azure/aad-pod-identity/pkg/auth"
-	k8s "github.com/Azure/aad-pod-identity/pkg/k8s"
-	"github.com/Azure/aad-pod-identity/pkg/metrics"
-	"github.com/Azure/aad-pod-identity/pkg/nmi"
-	"github.com/Azure/aad-pod-identity/pkg/pod"
 	"github.com/Azure/go-autorest/autorest/adal"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
+
+	"github.com/Azure/aad-pod-identity/pkg/auth"
+	"github.com/Azure/aad-pod-identity/pkg/k8s"
+	"github.com/Azure/aad-pod-identity/pkg/metrics"
+	"github.com/Azure/aad-pod-identity/pkg/nmi"
+	"github.com/Azure/aad-pod-identity/pkg/pod"
 )
 
 const (
 	localhost = "127.0.0.1"
+	// "/metadata" portion is case-insensitive in IMDS
+	tokenPathPrefix     = "/{type:(?i:metadata)}/identity/oauth2/token" // #nosec
+	hostTokenPathPrefix = "/host/token"
+	// "/metadata" portion is case-insensitive in IMDS
+	instancePathPrefix = "/{type:(?i:metadata)}/instance" // #nosec
+	headerRetryAfter   = "Retry-After"
 )
 
 // Server encapsulates all of the parameters necessary for starting up
@@ -50,6 +56,8 @@ type Server struct {
 	Initialized                        bool
 	BlockInstanceMetadata              bool
 	MetadataHeaderRequired             bool
+	SetRetryAfterHeader                bool
+	EnableConntrackDeletion            bool
 	// TokenClient is client that fetches identities and tokens
 	TokenClient nmi.TokenClient
 	Reporter    *metrics.Reporter
@@ -71,7 +79,7 @@ type MetadataResponse struct {
 }
 
 // NewServer will create a new Server with default values.
-func NewServer(micNamespace string, blockInstanceMetadata bool, metadataHeaderRequired bool, config *rest.Config) *Server {
+func NewServer(micNamespace string, blockInstanceMetadata bool, metadataHeaderRequired bool, config *rest.Config, setRetryAfterHeader bool) *Server {
 	clientSet := kubernetes.NewForConfigOrDie(config)
 	informer := informers.NewSharedInformerFactory(clientSet, 60*time.Second)
 	podObjCh := make(chan *v1.Pod, 100)
@@ -92,6 +100,7 @@ func NewServer(micNamespace string, blockInstanceMetadata bool, metadataHeaderRe
 		Reporter:               reporter,
 		PodClient:              podClient,
 		PodObjChannel:          podObjCh,
+		SetRetryAfterHeader:    setRetryAfterHeader,
 	}
 }
 
@@ -209,7 +218,14 @@ func (s *Server) hostHandler(w http.ResponseWriter, r *http.Request) (ns string)
 	tokens, err := s.TokenClient.GetTokens(r.Context(), tokenRequest.ClientID, tokenRequest.Resource, *podID)
 	if err != nil {
 		klog.Errorf("failed to get service principal token for pod:%s/%s, error: %+v", podns, podname, err)
-		http.Error(w, err.Error(), http.StatusForbidden)
+		httpErrorCode := http.StatusForbidden
+		if auth.IsHealthCheckError(err) {
+			// the adal library performs a health check prior to making the token request
+			// if the health check fails, we want to return a 503 instead of 403
+			// for health check failures, the error is not a token refresh error
+			httpErrorCode = http.StatusServiceUnavailable
+		}
+		http.Error(w, err.Error(), httpErrorCode)
 		return
 	}
 	nmiResp := NMIResponse{
@@ -295,6 +311,8 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	operationType := metrics.PodTokenOperationType
 	stausCode := http.StatusOK
 
+	klog.Infof("Start to handle MSI request: %s %s", r.Method, r.URL)
+
 	defer func() {
 		// if podns and podname is empty, then means it has failed in the validation steps, so
 		// skip sending metrics for the request
@@ -342,23 +360,19 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	}
 	// set ns for using in metrics
 	ns = podns
-	var exceptionList *[]aadpodid.AzurePodIdentityException
-	exceptionList, err = s.KubeClient.ListPodIdentityExceptions(podns)
+	exceptionList, err := s.KubeClient.ListPodIdentityExceptions(podns)
 	if err != nil {
-		klog.Errorf("getting list of azurepodidentityexception in %s namespace failed with error: %+v", podns, err)
-		stausCode = http.StatusInternalServerError
-		http.Error(w, err.Error(), stausCode)
+		klog.Errorf("getting list of AzurePodIdentityException in %s namespace failed with error: %+v", podns, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// If its mic, then just directly get the token and pass back.
 	if pod.IsPodExcepted(selectors.MatchLabels, *exceptionList) || s.isMIC(podns, rsName) {
 		klog.Infof("exception pod %s/%s token handling", podns, podname)
-		operationType = metrics.HostTokenOperationType
 		response, errorCode, err := s.getTokenForExceptedPod(tokenRequest.ClientID, tokenRequest.Resource)
 		if err != nil {
 			klog.Errorf("failed to get service principal token for pod:%s/%s with error code %d, error: %+v", podns, podname, errorCode, err)
-			stausCode = errorCode
 			http.Error(w, err.Error(), errorCode)
 			return
 		}
@@ -369,17 +383,28 @@ func (s *Server) msiHandler(w http.ResponseWriter, r *http.Request) (ns string) 
 	podID, err := s.TokenClient.GetIdentities(r.Context(), podns, podname, tokenRequest.ClientID, tokenRequest.ResourceID)
 	if err != nil {
 		klog.Errorf("failed to get matching identities for pod: %s/%s, error: %+v", podns, podname, err)
-		stausCode = http.StatusNotFound
-		http.Error(w, err.Error(), stausCode)
+		httpErrorCode := http.StatusNotFound
+		if s.SetRetryAfterHeader {
+			httpErrorCode = http.StatusServiceUnavailable
+			// setting it to 20s to allow MIC to finish processing current cycle and pick up this
+			// pod in the next sync cycle
+			w.Header().Set(headerRetryAfter, "20")
+		}
+		http.Error(w, err.Error(), httpErrorCode)
 		return
 	}
 
 	tokens, err := s.TokenClient.GetTokens(r.Context(), tokenRequest.ClientID, tokenRequest.Resource, *podID)
 	if err != nil {
 		klog.Errorf("failed to get service principal token for pod: %s/%s, error: %+v", podns, podname, err)
-		// Mark stausCode as StatusInternalServerError since we would like to consider this as nmi itself issue for alerting purpose
-		stausCode = http.StatusInternalServerError
-		http.Error(w, err.Error(), http.StatusForbidden)
+		httpErrorCode := http.StatusForbidden
+		if auth.IsHealthCheckError(err) {
+			// the adal library performs a health check prior to making the token request
+			// if the health check fails, we want to return a 503 instead of 403
+			// for health check failures, the error is not a token refresh error
+			httpErrorCode = http.StatusServiceUnavailable
+		}
+		http.Error(w, err.Error(), httpErrorCode)
 		return
 	}
 
@@ -518,11 +543,13 @@ func (s *Server) defaultPathHandler(w http.ResponseWriter, r *http.Request) (ns 
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		klog.Errorf("failed to read response body for %s, error: %+v", req.URL.String(), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+	copyHeader(w.Header(), resp.Header)
+	w.WriteHeader(resp.StatusCode)
 	_, _ = w.Write(body)
 	return
 }

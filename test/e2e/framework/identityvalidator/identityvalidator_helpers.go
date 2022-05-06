@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 package identityvalidator
@@ -56,8 +57,7 @@ func Create(input CreateInput) *corev1.Pod {
 				{
 					Name:            "identity-validator",
 					Image:           fmt.Sprintf("%s/identityvalidator:%s", input.Config.Registry, input.Config.IdentityValidatorVersion),
-					Command:         getIdentityValidatorCommand(input.Config),
-					Args:            getIdentityValidatorArgs(input.Config),
+					Args:            []string{"--sleep"},
 					ImagePullPolicy: corev1.PullAlways,
 					Env: []corev1.EnvVar{
 						{
@@ -94,11 +94,11 @@ func Create(input CreateInput) *corev1.Pod {
 		pod.Spec.InitContainers = []corev1.Container{
 			{
 				Name:  "init-myservice",
-				Image: "microsoft/azure-cli:latest",
+				Image: "mcr.microsoft.com/azure-cli:latest",
 				Command: []string{
 					"sh",
 					"-c",
-					"az login --identity",
+					"az login --identity --allow-no-subscriptions",
 				},
 			},
 		}
@@ -238,8 +238,6 @@ func Validate(input ValidateInput) {
 		"identityvalidator",
 		"--subscription-id",
 		input.Config.SubscriptionID,
-		"--resource-group",
-		input.Config.IdentityResourceGroup,
 		"--identity-client-id",
 		input.IdentityClientID,
 		"--keyvault-name",
@@ -262,29 +260,4 @@ func Validate(input ValidateInput) {
 		By(fmt.Sprintf("Ensuring an error has not occurred in %s", input.PodName))
 		Expect(err).To(BeNil())
 	}
-}
-
-// getIdentityValidatorCommand returns the command used for identityvalidator pod.
-// TODO: remove this when releasing v1.6.4
-func getIdentityValidatorCommand(config *framework.Config) []string {
-	command := []string{}
-	if config.IsSoakTest {
-		// Soak test is still using non-distroless identityvalidator image
-		// which allows us to run the 'sleep' command
-		command = append(command, "sleep", "3600")
-	}
-	return command
-}
-
-// getIdentityValidatorCommand returns the args used for identityvalidator pod.
-// TODO: remove this when releasing v1.6.4
-func getIdentityValidatorArgs(config *framework.Config) []string {
-	args := []string{}
-	if !config.IsSoakTest {
-		// Non-soak test is using a distroless identityvalidator image
-		// which does not allow us to run the 'sleep' command.
-		// enable the sleep flag to allow identityvalidator to sleep forever.
-		args = append(args, "--sleep")
-	}
-	return args
 }

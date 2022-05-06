@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 package helm
@@ -12,6 +13,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"golang.org/x/mod/semver"
 )
 
 const (
@@ -84,6 +86,7 @@ func Upgrade(input UpgradeInput) {
 		"upgrade",
 		chartName,
 		"manifest_staging/charts/aad-pod-identity",
+		"--reuse-values",
 		"--wait",
 		fmt.Sprintf("--namespace=%s", framework.NamespaceKubeSystem),
 		"--debug",
@@ -99,6 +102,17 @@ func generateValueArgs(config *framework.Config) []string {
 		fmt.Sprintf("--set=image.repository=%s", config.Registry),
 		fmt.Sprintf("--set=mic.tag=%s", config.MICVersion),
 		fmt.Sprintf("--set=nmi.tag=%s", config.NMIVersion),
+		fmt.Sprintf("--set=mic.syncRetryDuration=%s", config.MICSyncInterval),
+		fmt.Sprintf("--set=nmi.retryAttemptsForCreated=%d", config.RetryAttemptsForCreated),
+		fmt.Sprintf("--set=nmi.retryAttemptsForAssigned=%d", config.RetryAttemptsForAssigned),
+		fmt.Sprintf("--set=nmi.findIdentityRetryIntervalInSeconds=%d", config.FindIdentityRetryIntervalInSeconds),
+		// Setting this explicitly as the old charts don't have this value object and fail with --reuse-values
+		fmt.Sprintf("--set=mic.customCloud.enabled=false"),
+	}
+
+	// TODO (aramase) bump this to compare against v1.7.3 after next release
+	if semver.Compare(config.MICVersion, "v1.7.2") > 1 && semver.Compare(config.NMIVersion, "v1.7.2") > 1 {
+		args = append(args, fmt.Sprintf("--set=customUserAgent=pi-e2e", "--set=mic.logVerbosity=9"))
 	}
 
 	if config.ImmutableUserMSIs != "" {
@@ -113,8 +127,16 @@ func generateValueArgs(config *framework.Config) []string {
 		args = append(args, fmt.Sprintf("--set=nmi.blockInstanceMetadata=%t", config.BlockInstanceMetadata))
 	}
 
+	if config.MetadataHeaderRequired {
+		args = append(args, fmt.Sprintf("--set=nmi.metadataHeaderRequired=%t", config.MetadataHeaderRequired))
+	}
+
 	if config.IdentityReconcileInterval != 0 {
 		args = append(args, fmt.Sprintf("--set=mic.identityAssignmentReconcileInterval=%s", config.IdentityReconcileInterval))
+	}
+
+	if config.SetRetryAfterHeader {
+		args = append(args, fmt.Sprintf("--set=nmi.setRetryAfterHeader=%t", config.SetRetryAfterHeader))
 	}
 
 	return args

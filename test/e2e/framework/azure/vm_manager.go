@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 package azure
@@ -98,6 +99,7 @@ func (m *vmManager) UnassignUserAssignedIdentity(vmName, identityToUnassign stri
 			vm.Identity.UserAssignedIdentities[identity] = nil
 			continue
 		}
+		vm.Identity.UserAssignedIdentities[identity] = &compute.VirtualMachineIdentityUserAssignedIdentitiesValue{}
 		hasOtherIdentitiesAssigned = true
 	}
 

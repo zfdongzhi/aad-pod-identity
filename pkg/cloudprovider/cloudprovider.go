@@ -2,7 +2,6 @@ package cloudprovider
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -52,7 +51,7 @@ const (
 )
 
 // NewCloudProvider returns a azure cloud provider client
-func NewCloudProvider(configFile string, updateUserMSIMaxRetry int, updateUseMSIRetryInterval time.Duration) (c *Client, e error) {
+func NewCloudProvider(configFile string, updateUserMSIMaxRetry int, updateUseMSIRetryInterval time.Duration) (*Client, error) {
 	client := &Client{
 		configFile: configFile,
 	}
@@ -70,7 +69,7 @@ func (c *Client) Init() error {
 	c.Config = config.AzureConfig{}
 	if c.configFile != "" {
 		klog.V(6).Info("populating AzureConfig from azure.json")
-		bytes, err := ioutil.ReadFile(c.configFile)
+		bytes, err := os.ReadFile(c.configFile)
 		if err != nil {
 			return fmt.Errorf("failed to config file %s, error: %+v", c.configFile, err)
 		}
@@ -107,21 +106,16 @@ func (c *Client) Init() error {
 
 	var spt *adal.ServicePrincipalToken
 	if c.Config.UseManagedIdentityExtension {
-		// MSI endpoint is required for both types of MSI - system assigned and user assigned.
-		msiEndpoint, err := adal.GetMSIVMEndpoint()
-		if err != nil {
-			return fmt.Errorf("failed to get MSI endpoint, error: %+v", err)
-		}
 		// UserAssignedIdentityID is empty, so we are going to use system assigned MSI
 		if c.Config.UserAssignedIdentityID == "" {
 			klog.Infof("MIC using system assigned identity for authentication.")
-			spt, err = adal.NewServicePrincipalTokenFromMSI(msiEndpoint, azureEnv.ResourceManagerEndpoint)
+			spt, err = adal.NewServicePrincipalTokenFromMSI("", azureEnv.ResourceManagerEndpoint)
 			if err != nil {
 				return fmt.Errorf("failed to get token from system-assigned identity, error: %+v", err)
 			}
 		} else { // User assigned identity usage.
 			klog.Infof("MIC using user assigned identity: %s for authentication.", utils.RedactClientID(c.Config.UserAssignedIdentityID))
-			spt, err = adal.NewServicePrincipalTokenFromMSIWithUserAssignedID(msiEndpoint, azureEnv.ResourceManagerEndpoint, c.Config.UserAssignedIdentityID)
+			spt, err = adal.NewServicePrincipalTokenFromMSIWithUserAssignedID("", azureEnv.ResourceManagerEndpoint, c.Config.UserAssignedIdentityID)
 			if err != nil {
 				return fmt.Errorf("failed to get token from user-assigned identity, error: %+v", err)
 			}
@@ -181,6 +175,12 @@ func (c *Client) GetUserMSIs(name string, isvmss bool) ([]string, error) {
 
 // UpdateUserMSI will batch process the removal and addition of ids
 func (c *Client) UpdateUserMSI(addUserAssignedMSIIDs, removeUserAssignedMSIIDs []string, name string, isvmss bool) error {
+	// if there are no identities to be assigned and un-assigned, then we should not
+	// invoke an additional GET or PATCH request.
+	if len(addUserAssignedMSIIDs) == 0 && len(removeUserAssignedMSIIDs) == 0 {
+		klog.Infof("No identities to assign or un-assign")
+		return nil
+	}
 	idH, updateFunc, err := c.getIdentityResource(name, isvmss)
 	if err != nil {
 		return fmt.Errorf("failed to get identity resource, error: %v", err)
@@ -243,7 +243,7 @@ func (c *Client) UpdateUserMSI(addUserAssignedMSIIDs, removeUserAssignedMSIIDs [
 	return nil
 }
 
-func (c *Client) getIdentityResource(name string, isvmss bool) (idH IdentityHolder, update func() error, retErr error) {
+func (c *Client) getIdentityResource(name string, isvmss bool) (IdentityHolder, func() error, error) {
 	rg := c.Config.ResourceGroupName
 
 	if isvmss {
@@ -252,10 +252,10 @@ func (c *Client) getIdentityResource(name string, isvmss bool) (idH IdentityHold
 			return nil, nil, fmt.Errorf("failed to get vmss %s in resource group %s, error: %+v", name, rg, err)
 		}
 
-		update = func() error {
+		update := func() error {
 			return c.VMSSClient.UpdateIdentities(rg, name, vmss)
 		}
-		idH = &vmssIdentityHolder{&vmss}
+		idH := &vmssIdentityHolder{&vmss}
 		return idH, update, nil
 	}
 
@@ -263,10 +263,10 @@ func (c *Client) getIdentityResource(name string, isvmss bool) (idH IdentityHold
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get vm %s in resource group %s, error: %+v", name, rg, err)
 	}
-	update = func() error {
+	update := func() error {
 		return c.VMClient.UpdateIdentities(rg, name, vm)
 	}
-	idH = &vmIdentityHolder{&vm}
+	idH := &vmIdentityHolder{&vm}
 	return idH, update, nil
 }
 
@@ -363,4 +363,10 @@ func getRetryAfter(resp *http.Response) time.Duration {
 		dur = time.Until(t)
 	}
 	return dur
+}
+
+// GetClusterIdentity returns the cluster identity that MIC will use for all
+// cloud provider operations. This is userAssignedIdentityID configured in the azure.json
+func (c *Client) GetClusterIdentity() string {
+	return c.Config.UserAssignedIdentityID
 }

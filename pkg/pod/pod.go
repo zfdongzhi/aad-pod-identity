@@ -29,7 +29,7 @@ type ClientInt interface {
 }
 
 // NewPodClient returns new pod client
-func NewPodClient(i informers.SharedInformerFactory, eventCh chan aadpodid.EventType) (c ClientInt) {
+func NewPodClient(i informers.SharedInformerFactory, eventCh chan aadpodid.EventType) ClientInt {
 	podInformer := i.Core().V1().Pods()
 	addPodHandler(podInformer, eventCh, nil)
 
@@ -51,21 +51,22 @@ func addPodHandler(i informersv1.PodInformer, eventCh chan aadpodid.EventType, p
 	i.Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				klog.V(6).Infof("Pod Created")
-				if eventCh != nil {
-					eventCh <- aadpodid.PodCreated
-				}
-			},
-			DeleteFunc: func(obj interface{}) {
-				klog.V(6).Infof("Pod Deleted")
+				klog.V(6).Infof("pod created")
 				if eventCh != nil {
 					eventCh <- aadpodid.PodDeleted
 				}
 			},
-			UpdateFunc: func(OldObj, newObj interface{}) {
-				oldPod, newPod := OldObj.(*v1.Pod), newObj.(*v1.Pod)
-
-				// This is to handle windows nmi by observing ip change
+			DeleteFunc: func(obj interface{}) {
+				klog.V(6).Infof("pod deleted")
+				if eventCh != nil {
+					eventCh <- aadpodid.PodUpdated
+				}
+			},
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				// We are only interested in updates to pod if the node or label changes.
+				// Having this check will ensure that mic sync loop does not do extra work
+				// for every pod update.
+				oldPod, newPod := oldObj.(*v1.Pod), newObj.(*v1.Pod)
 				if podInfoCh != nil {
 					if oldPod.Status.PodIP != newPod.Status.PodIP {
 						klog.V(6).Infof("Pod IP Updated")
@@ -78,11 +79,8 @@ func addPodHandler(i informersv1.PodInformer, eventCh chan aadpodid.EventType, p
 					}
 				}
 
-				// We are only interested in updates to pod if the node or label changes.
-				// Having this check will ensure that mic sync loop does not do extra work
-				// for every pod update.
 				if oldPod.Spec.NodeName != newPod.Spec.NodeName || oldPod.ObjectMeta.Labels[aadpodid.CRDLabelKey] != newPod.ObjectMeta.Labels[aadpodid.CRDLabelKey] {
-					klog.V(6).Infof("Pod Updated")
+					klog.V(6).Infof("pod updated")
 					if eventCh != nil {
 						eventCh <- aadpodid.PodUpdated
 					}
@@ -110,7 +108,7 @@ func (c *Client) Start(exit <-chan struct{}) {
 }
 
 // GetPods returns list of all pods
-func (c *Client) GetPods() (pods []*v1.Pod, err error) {
+func (c *Client) GetPods() ([]*v1.Pod, error) {
 	begin := time.Now()
 	crdReq, err := labels.NewRequirement(aadpodid.CRDLabelKey, selection.Exists, nil)
 	if err != nil {

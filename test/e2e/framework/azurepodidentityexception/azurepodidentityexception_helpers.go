@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 package azurepodidentityexception
@@ -40,6 +41,7 @@ func Create(input CreateInput) *aadpodv1.AzurePodIdentityException {
 			PodLabels: input.PodLabels,
 		},
 	}
+	azurePodIdentityException.TypeMeta = framework.TypeMeta(azurePodIdentityException)
 
 	Expect(input.Creator.Create(context.TODO(), azurePodIdentityException)).Should(Succeed())
 
