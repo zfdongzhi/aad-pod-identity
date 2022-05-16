@@ -53,13 +53,13 @@ func addPodHandler(i informersv1.PodInformer, eventCh chan aadpodid.EventType, p
 			AddFunc: func(obj interface{}) {
 				klog.V(6).Infof("pod created")
 				if eventCh != nil {
-					eventCh <- aadpodid.PodDeleted
+					eventCh <- aadpodid.PodCreated
 				}
 			},
 			DeleteFunc: func(obj interface{}) {
 				klog.V(6).Infof("pod deleted")
 				if eventCh != nil {
-					eventCh <- aadpodid.PodUpdated
+					eventCh <- aadpodid.PodDeleted
 				}
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
